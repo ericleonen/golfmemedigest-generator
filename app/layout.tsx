@@ -1,34 +1,26 @@
 import type { Metadata } from "next";
-import { Anton, Inter } from "next/font/google";
+import { Anton, Caveat, Inter, Oswald, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
-// Self-hosted by Next at build time, so the canvas renders the same fonts on
-// every machine and there is no third-party request at page load.
-const anton = Anton({
-  weight: "400",
-  subsets: ["latin"],
-  variable: "--font-anton",
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
+// The five faces Claude may choose between, self-hosted by Next at build time
+// so the canvas renders identically on every machine.
+const impact = Anton({ weight: "400", subsets: ["latin"], variable: "--font-impact", display: "swap" });
+const condensed = Oswald({ subsets: ["latin"], variable: "--font-condensed", display: "swap" });
+const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
+const serif = Playfair_Display({ subsets: ["latin"], variable: "--font-serif", display: "swap" });
+const hand = Caveat({ subsets: ["latin"], variable: "--font-hand", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "@golfmemedigest meme generator",
-  description: "Turn a photo into @golfmemedigest-voiced meme variants.",
+  title: "Golf Meme Digest",
+  description: "Turn a photo into memes in the @golfmemedigest voice.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${anton.variable} ${inter.variable}`}>
+    <html
+      lang="en"
+      className={`${impact.variable} ${condensed.variable} ${sans.variable} ${serif.variable} ${hand.variable}`}
+    >
       <body>{children}</body>
     </html>
   );

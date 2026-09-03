@@ -2,8 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import * as z from "zod";
 import { config } from "./config";
-import { buildCorpusContext } from "./corpus";
-import { MEME_LAYOUTS, type GenerateResponse } from "@/shared/types";
+import { pickReferences } from "./reference";
+import { FONT_KEYS, type GenerateResponse, type MemeSpec } from "@/shared/types";
 
 const client = new Anthropic();
 
@@ -16,72 +16,107 @@ const SUPPORTED_MEDIA_TYPES = [
 
 type SupportedMediaType = (typeof SUPPORTED_MEDIA_TYPES)[number];
 
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+const TextBlockSchema = z.object({
+  text: z.string().describe("The words. Keep meme text short enough to read in two seconds."),
+  font: z
+    .enum(FONT_KEYS as [string, ...string[]])
+    .describe(
+      "impact = heavy condensed caps, the classic meme look. condensed = tall narrow bold sans. sans = clean neutral, screenshot energy. serif = elegant high-contrast, deadpan and editorial. hand = loose handwriting, an annotation scrawled on.",
+    ),
+  uppercase: z.boolean().describe("Render in ALL CAPS. True for impact, usually false for serif and hand."),
+  color: z.string().describe('Hex fill, e.g. "#ffffff" or "#111111".'),
+  stroke: z
+    .enum(["black", "white", "none"])
+    .describe(
+      "Outline behind the fill, so text stays readable over a busy photo. Use none when the text sits on a flat band.",
+    ),
+  align: z.enum(["left", "center", "right"]),
+  x: z.number().describe("Horizontal centre of this block, 0 = left edge, 1 = right edge."),
+  y: z.number().describe("Vertical centre of this block, 0 = top of the whole canvas, 1 = bottom."),
+  width: z.number().describe("Longest line allowed, as a fraction of canvas width. 0.9 is nearly edge to edge."),
+  size: z.number().describe("Font size as a fraction of canvas width. 0.11 is a big meme line, 0.04 is a small aside."),
+  rotation: z.number().describe("Tilt in degrees, -20 to 20. Use 0 unless the tilt is the joke."),
+});
+
 const VariantSchema = z.object({
-  layout: z
-    .enum(MEME_LAYOUTS as [string, ...string[]])
-    .describe(
-      "top-bottom = classic Impact caps over the photo. caption-bar = one sentence in a white bar above the photo, photo untouched. lower-third = a single Impact line across the bottom only.",
-    ),
-  topText: z
-    .string()
-    .describe(
-      "Top Impact line. Required for top-bottom, empty string for every other layout. Keep under 60 characters.",
-    ),
-  bottomText: z
-    .string()
-    .describe(
-      "Bottom Impact line, the punchline. Required for top-bottom and lower-third, empty string for caption-bar. Keep under 70 characters.",
-    ),
-  captionText: z
-    .string()
-    .describe(
-      "The white-bar sentence. Required for caption-bar, empty string for every other layout. Keep under 140 characters.",
-    ),
-  instagramCaption: z
-    .string()
-    .describe("Caption to post with it. One or two lines, no hashtags here."),
-  hashtags: z
-    .array(z.string())
-    .describe("4 to 8 hashtags, lowercase, without the leading # character."),
-  angle: z
-    .string()
-    .describe(
-      "Under 12 words naming the joke's angle, so the human can pick between variants at a glance.",
-    ),
+  padTop: z
+    .number()
+    .describe("Solid band added ABOVE the photo, as a fraction of photo height. 0 for text over the photo, ~0.2 for a caption bar."),
+  padBottom: z
+    .number()
+    .describe("Solid band added BELOW the photo, as a fraction of photo height. 0 for none."),
+  background: z.string().describe('Hex fill for those bands, e.g. "#ffffff" or "#000000".'),
+  blocks: z.array(TextBlockSchema).describe("Every run of text on this meme. One, two, or several."),
+  angle: z.string().describe("Under 12 words naming the joke's angle, so a human can choose at a glance."),
+  instagramCaption: z.string().describe("Caption to post with it. One or two lines, no hashtags here."),
+  hashtags: z.array(z.string()).describe("4 to 8 hashtags, lowercase, without the leading # character."),
 });
 
-const ResultSchema = z.object({
-  variants: z.array(VariantSchema),
-});
+const ResultSchema = z.object({ variants: z.array(VariantSchema) });
 
-const INSTRUCTIONS = `You are the staff meme writer for @golfmemedigest, a golf meme account on Instagram.
+const INSTRUCTIONS = `You are the staff meme writer and designer for @golfmemedigest, a golf meme account on Instagram.
 
-A human sends you one photo and, sometimes, a few words steering the joke. You write meme variants for that exact photo.
+A human sends you one photo and, sometimes, a few words steering the joke. You write the joke AND lay it out.
 
 HOW TO WRITE
-- Look at the photo first. Name to yourself what is actually in it: the lie, the stance, the face, the cart, the clubhouse, the scoreboard, the weather, whatever is there. Every line you write must only make sense with THIS photo. A caption that would work over any golf photo is a failed caption.
+- Look at the photo first. Name to yourself what is actually in it: the lie, the stance, the face, the cart, the clubhouse, the scoreboard, the weather. Every line must only make sense with THIS photo. A caption that would work over any golf photo is a failed caption.
 - Write from inside the game. Shanks, three-putts, the range swing versus the course swing, provisional balls, slow play, cart girl timing, the guy who buys a new driver every spring, "I'm due", scoring in the 90s and calling it 85, playing the tips, the first tee in front of strangers, winter rules, a lost sleeve of Pro V1s.
 - Punch at the golfer, not at people. Self-own beats put-down. No slurs, no politics, no body-shaming, nothing about a named private individual, nothing sexual.
-- Short. Meme text lives or dies on read-in-under-two-seconds. Cut every word that is not doing work. No emoji in the on-image text.
-- Setup on top, turn on the bottom. Do not repeat the top line's words in the bottom line.
-- On-image text is written in ALL CAPS by the renderer, so write it plainly and do not shout with punctuation.
+- Short. Cut every word not doing work. No emoji in the on-image text.
+- Every variant must be a genuinely different joke, not a rewording.
 
-VARIETY
-- Every variant must be a genuinely different joke, not a rewording. Vary the angle: relatable pain, delusional confidence, the lie you tell your group, the pro-golf callout, the equipment cope, the pace-of-play grievance, the "nobody:" setup.
-- Spread the layouts. Do not return the same layout for every variant unless the photo only works one way.
+HOW TO LAY IT OUT
+You control the whole canvas. The canvas is the photo, optionally with a solid band added above it (padTop) and/or below it (padBottom). Every text block is placed by its centre, in fractions of the FULL canvas: x from 0 (left) to 1 (right), y from 0 (top) to 1 (bottom).
 
-VOICE
-- Below are a few memes this account has already posted, drawn at random and weighted toward the ones that performed best. They are a sample, not the whole account: read them for rhythm, length, bluntness and subject matter, and do not assume the account only posts what these few happen to cover. Do not copy a past caption word for word, and do not reuse a past joke unless the new photo genuinely earns it.`;
+Choose a treatment that fits this photo and this joke. Some that work:
+- Impact caps top and bottom over the photo: padTop 0, padBottom 0, two blocks at y around 0.08 and 0.92, font impact, white with black stroke, size around 0.1.
+- Caption bar: padTop about 0.18, background "#ffffff", one sans block at y about 0.09 in near-black with stroke none. Reads like a tweet above an untouched photo.
+- One line across the bottom: a single impact or condensed block at y about 0.9.
+- A label pinned to something in the frame: a small block placed right on the object it names, maybe tilted a few degrees. Use the actual position of the thing in the photo.
+- Setup on a band above, punchline over the photo. Or a handwritten aside in a corner. Or a serif line, small and centred, played completely straight.
 
-function buildSystem(corpusBlock: string) {
-  // No cache_control here on purpose. The sample is redrawn every request, so
-  // there is no stable prefix worth a breakpoint, and the instructions alone
-  // fall under the API's minimum cacheable prefix.
-  const text = corpusBlock
-    ? `${INSTRUCTIONS}\n\n=== a few posts from @golfmemedigest ===\n\n${corpusBlock}\n\n=== end of examples ===`
-    : `${INSTRUCTIONS}\n\n(No back catalogue has been ingested yet. Write in the voice described above.)`;
+Rules that keep it readable:
+- Text over photo needs a stroke. Text on a solid band should have stroke "none".
+- Keep blocks inside the canvas: y minus half the text height must stay above 0, and below 1 at the bottom. Leave a margin of about 0.04.
+- Do not let blocks overlap each other, and do not cover the face or the subject of the joke.
+- If you add a band, put text in it. Do not add a band and then place everything over the photo.
+- Vary the treatment across the variants you return. Do not send four of the same layout.
 
-  return text;
+STYLE REFERENCE
+The images before the new photo are recent posts from this account. They are a small random sample, not the whole account. Read them for the voice, the joke construction, and the visual habits: where text sits, how big it is, which typeface, whether there is a band. Match that house style. Do not copy a past caption word for word.`;
+
+function contentBlocks(
+  references: ReturnType<typeof pickReferences>,
+  photo: { mediaType: SupportedMediaType; data: string },
+  task: string,
+): Anthropic.Beta.BetaContentBlockParam[] {
+  const blocks: Anthropic.Beta.BetaContentBlockParam[] = [];
+
+  if (references.length > 0) {
+    blocks.push({
+      type: "text",
+      text: `Here ${references.length === 1 ? "is" : "are"} ${references.length} recent post${
+        references.length === 1 ? "" : "s"
+      } from @golfmemedigest, for style:`,
+    });
+    for (const reference of references) {
+      blocks.push({
+        type: "image",
+        source: { type: "base64", media_type: reference.mediaType, data: reference.data },
+      });
+    }
+  }
+
+  blocks.push({ type: "text", text: "Here is the new photo to make memes from:" });
+  blocks.push({
+    type: "image",
+    source: { type: "base64", media_type: photo.mediaType, data: photo.data },
+  });
+  blocks.push({ type: "text", text: task });
+
+  return blocks;
 }
 
 export class BadImageError extends Error {}
@@ -106,7 +141,7 @@ export function parseDataUrl(dataUrl: string): {
   const bytes = Math.floor((data.length * 3) / 4);
   if (bytes > config.maxImageBytes) {
     throw new BadImageError(
-      `Image is ${(bytes / 1024 / 1024).toFixed(1)} MB, which is over the ${(
+      `Image is ${(bytes / 1024 / 1024).toFixed(1)} MB, over the ${(
         config.maxImageBytes /
         1024 /
         1024
@@ -116,22 +151,68 @@ export function parseDataUrl(dataUrl: string): {
   return { mediaType: mediaType as SupportedMediaType, data };
 }
 
+const clamp = (value: number, min: number, max: number, fallback: number) =>
+  Number.isFinite(value) ? Math.min(Math.max(value, min), max) : fallback;
+
+const hex = (value: string, fallback: string) =>
+  HEX.test(value) ? value.toLowerCase() : fallback;
+
+/**
+ * Claude picks the layout, but nothing it returns is allowed to produce an
+ * unrenderable canvas — a negative size, a block off the edge, a colour that is
+ * not a colour. Clamp rather than reject: a slightly-off number is still a
+ * usable meme the human can nudge.
+ */
+function normalise(variant: z.infer<typeof VariantSchema>, id: string): MemeSpec {
+  const blocks = (variant.blocks ?? [])
+    .filter((block) => block.text?.trim())
+    .slice(0, 8)
+    .map((block) => ({
+      text: block.text.trim(),
+      font: (FONT_KEYS as string[]).includes(block.font)
+        ? (block.font as MemeSpec["blocks"][number]["font"])
+        : "impact",
+      uppercase: Boolean(block.uppercase),
+      color: hex(block.color ?? "", "#ffffff"),
+      stroke: (["black", "white", "none"] as const).includes(block.stroke)
+        ? block.stroke
+        : "black",
+      align: (["left", "center", "right"] as const).includes(block.align)
+        ? block.align
+        : "center",
+      x: clamp(block.x, 0.02, 0.98, 0.5),
+      y: clamp(block.y, 0.02, 0.98, 0.5),
+      width: clamp(block.width, 0.15, 1, 0.9),
+      size: clamp(block.size, 0.02, 0.3, 0.09),
+      rotation: clamp(block.rotation, -20, 20, 0),
+    }));
+
+  return {
+    id,
+    padTop: clamp(variant.padTop, 0, 0.6, 0),
+    padBottom: clamp(variant.padBottom, 0, 0.6, 0),
+    background: hex(variant.background ?? "", "#ffffff"),
+    blocks,
+    angle: variant.angle ?? "",
+    instagramCaption: variant.instagramCaption ?? "",
+    hashtags: (variant.hashtags ?? []).map((tag) => tag.replace(/^#/, "")),
+  };
+}
+
 export async function generateVariants(opts: {
   image: string;
   prompt?: string;
   count: number;
-  sampleSize?: number;
 }): Promise<GenerateResponse> {
-  const { mediaType, data } = parseDataUrl(opts.image);
-  const { block, usage: corpusUsage } = buildCorpusContext(opts.sampleSize);
+  const photo = parseDataUrl(opts.image);
+  const references = pickReferences();
 
   const steer = opts.prompt?.trim();
   const task = [
-    `Write ${opts.count} meme variants for the photo above.`,
+    `Write and lay out ${opts.count} meme variants for that photo.`,
     steer
-      ? `The human steered it with: "${steer}". Treat that as the direction for every variant, and still make each one a different joke.`
+      ? `The human steered it with: "${steer}". Treat that as the direction for every variant, and still make each one a different joke with a different treatment.`
       : `The human gave no steer, so find the joke in the photo yourself.`,
-    `Fill topText/bottomText/captionText according to the layout you pick and leave the unused ones as empty strings.`,
   ].join("\n\n");
 
   const response = await client.beta.messages.parse({
@@ -141,22 +222,13 @@ export async function generateVariants(opts: {
     // If a safety classifier declines the request, the server retries on a
     // comparable model instead of handing back an unusable turn.
     fallbacks: "default",
-    system: buildSystem(block),
+    system: INSTRUCTIONS,
     output_config: {
       effort: config.effort,
       format: betaZodOutputFormat(ResultSchema),
     },
     messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: { type: "base64", media_type: mediaType, data },
-          },
-          { type: "text", text: task },
-        ],
-      },
+      { role: "user", content: contentBlocks(references, photo, task) },
     ],
   });
 
@@ -167,29 +239,21 @@ export async function generateVariants(opts: {
     );
   }
 
-  const variants = parsed.variants.slice(0, opts.count).map((variant, i) => ({
-    id: `${response.id}-${i}`,
-    layout: variant.layout as (typeof MEME_LAYOUTS)[number],
-    topText: variant.topText ?? "",
-    bottomText: variant.bottomText ?? "",
-    captionText: variant.captionText ?? "",
-    instagramCaption: variant.instagramCaption ?? "",
-    hashtags: (variant.hashtags ?? []).map((tag) => tag.replace(/^#/, "")),
-    angle: variant.angle ?? "",
-  }));
+  const variants = parsed.variants
+    .slice(0, opts.count)
+    .map((variant, i) => normalise(variant, `${response.id}-${i}`))
+    .filter((variant) => variant.blocks.length > 0);
 
   if (variants.length === 0) {
-    throw new Error("Claude returned zero variants. Try again.");
+    throw new Error("Claude returned no usable variants. Try again.");
   }
 
   return {
     variants,
-    corpus: corpusUsage,
+    referencesUsed: references.length,
     usage: {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
-      cacheReadInputTokens: response.usage.cache_read_input_tokens ?? 0,
-      cacheCreationInputTokens: response.usage.cache_creation_input_tokens ?? 0,
     },
   };
 }

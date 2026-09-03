@@ -8,11 +8,4 @@ out
 .DS_Store
 *.log
 next-env.d.ts
-
-# The raw images stay local; data/corpus.json is committed on purpose so a
-# deploy ships with the account's voice instead of an empty catalogue.
-corpus/images/*
-!corpus/images/.gitkeep
-corpus/captions.json
-corpus/engagement.json
 *.tsbuildinfo

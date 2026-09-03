@@ -24,27 +24,25 @@ npm run dev                    # http://localhost:3000
 
 Generate one meme. If that works, the deploy will work.
 
-## Step 2 — Ingest the back catalogue, and commit it
+## Step 2 — Add your style reference, and commit it
 
-This is what makes the output sound like your account instead of a generic meme
-bot. Do it *before* deploying: `data/corpus.json` is bundled into the function
-at build time, so the deploy ships whatever that file holds at that commit.
+This is what makes the output look and sound like your account instead of a
+generic meme bot. Do it *before* deploying: the `reference/` folder is bundled
+into the serverless function at build time, so the deploy ships whatever is
+committed.
 
 ```bash
-# Put your past memes in corpus/images/, or use an Instagram export:
-npm run ingest -- --instagram-export ~/Downloads/instagram-golfmemedigest --limit 100
+# 10-40 of your best past memes, resized to ~1080px on the long edge
+cp ~/Desktop/best-memes/*.jpg reference/
 
-git add data/corpus.json
-git commit -m "Ingest back catalogue"
+git add reference/
+git commit -m "Add style reference"
 git push
 ```
 
-Add `corpus/engagement.json` with likes/comments per post first (see
-[`corpus/README.md`](corpus/README.md)) — the app weights its random draw by
-those numbers, and ingest then reads your best posts first, so `--limit 100`
-catalogues your 100 strongest rather than the first 100 alphabetically.
-
-Only the extracted text catalogue is committed; the images stay out of git.
+No catalogue, no ingest script — Claude looks at the actual images. Four are
+picked at random per run. See [`reference/README.md`](reference/README.md) for
+what to include and why variety matters more than volume.
 
 ## Step 3 — Deploy to Vercel
 
@@ -58,6 +56,9 @@ Only the extracted text catalogue is committed; the images stay out of git.
    | --- | --- |
    | `ANTHROPIC_API_KEY` | the key from step 1 |
    | `APP_PASSWORD` | any passphrase you choose |
+
+   Optionally add `NEXT_PUBLIC_LOGO=/logo.png` if you have put the real logo
+   artwork in `public/`.
 
    **Set `APP_PASSWORD`.** Without it, anyone who finds the URL spends your API
    credits. You type it into the app once and the browser remembers it.
@@ -95,9 +96,13 @@ minutes. Then: <https://golfmemedigest.ericleonen.com>
 curl https://golfmemedigest.ericleonen.com/api/health
 ```
 
-You want `"apiKeyConfigured": true`, `"authRequired": true`, and a non-zero
-`corpus.total`. If `corpus.total` is 0, `data/corpus.json` was not committed —
-go back to step 2.
+You want `"apiKeyConfigured": true`, `"authRequired": true`, and a
+`referenceImages` count matching what you committed.
+
+**If `referenceImages` is 0 but you committed images**, the folder did not make
+it into the function bundle. `next.config.ts` names it explicitly under
+`outputFileTracingIncludes` for exactly this reason — check that entry still
+matches `REFERENCE_DIR`.
 
 ---
 
@@ -120,20 +125,19 @@ generate 2 variants instead of 4.
 **Updating the app.** Push to `main`; Vercel redeploys automatically. Pushes to
 other branches get their own preview URL.
 
-**Adding new memes to the voice.** Re-run `npm run ingest` locally, commit
-`data/corpus.json`, push. Ingest is incremental — it only pays for images it has
-not read before.
+**Adding new memes to the voice.** Drop more images in `reference/`, commit,
+push. Nothing to run.
 
-**Watching the spend.** <https://console.anthropic.com> → Usage. Only a handful
-of past memes go out per request, so the input side is small; most of the cost
-is the photo and the variants Claude writes back.
+**Watching the spend.** <https://console.anthropic.com> → Usage. Each run sends
+five images — four reference memes plus your photo — so vision tokens are the
+bulk of the input cost. Keeping the reference files small matters.
 
 **Turning the cost down,** in order of impact — all of them are Vercel
 environment variables, no code change:
 
-1. `CLAUDE_EFFORT=low`
-2. `VARIANT_COUNT=2` — halves the output tokens
-3. `SAMPLE_SIZE=3` — a slightly smaller style sample
+1. `REFERENCE_SAMPLE_SIZE=2` — halves the vision tokens per run
+2. `CLAUDE_EFFORT=low`
+3. `VARIANT_COUNT=2` — halves the output tokens
 
 **Abuse.** `APP_PASSWORD` is the real lock. `RATE_LIMIT_PER_HOUR` (default 30
 per IP) is a speed bump only: the counter lives in one function instance's

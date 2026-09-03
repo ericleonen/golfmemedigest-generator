@@ -5,23 +5,14 @@ function int(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function float(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number.parseFloat(raw);
-  // Explicit check, not `|| fallback`: 0 is a meaningful value here.
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
 export const config = {
-  /** Anthropic model used for meme writing and for corpus ingest. */
+  /** Anthropic model used to write the memes. */
   model: process.env.CLAUDE_MODEL ?? "claude-opus-5",
 
   /**
    * Reasoning effort. "high" is the API default and the best quality, but a
    * Vercel function has a hard wall-clock limit (60s on Hobby), so the default
-   * here is "medium" to stay comfortably inside it. Raise it if your plan
-   * allows a longer maxDuration and you want the extra quality.
+   * here is "medium" to stay comfortably inside it.
    */
   effort: (process.env.CLAUDE_EFFORT ?? "medium") as
     | "low"
@@ -34,40 +25,11 @@ export const config = {
   defaultVariantCount: int("VARIANT_COUNT", 4),
   maxVariantCount: int("MAX_VARIANT_COUNT", 6),
 
-  /** How many past memes to show as style context, when the UI does not say. */
-  sampleSize: int("SAMPLE_SIZE", 4),
-  maxSampleSize: int("MAX_SAMPLE_SIZE", 8),
+  /** Folder of past memes, shown to Claude as the house style. */
+  referenceDir: process.env.REFERENCE_DIR ?? "reference",
 
-  /**
-   * A comment is worth this many likes when scoring a past post. Comments cost
-   * the reader more, so they separate "this landed" from "this scrolled past
-   * pleasantly".
-   */
-  commentWeight: int("COMMENT_WEIGHT", 5),
-
-  /**
-   * "absolute" ranks by raw likes and comments. "rate" divides by views, which
-   * scores the joke rather than how far the algorithm pushed the post — better
-   * once your reach is uneven, but it needs view counts on every post.
-   */
-  engagementMode: (process.env.ENGAGEMENT_MODE ?? "absolute") as
-    | "absolute"
-    | "rate",
-
-  /**
-   * How hard popularity pulls the draw, as an exponent on each post's score
-   * relative to the catalogue median. 0 is a flat random sample, 1 is
-   * proportional, 2 strongly favours the hits.
-   *
-   * The default is 0.5 because engagement is heavy-tailed: at 1, one viral post
-   * turns up in almost every draw and the variety you wanted from sampling
-   * disappears. Square-rooting keeps the ordering while leaving room for the
-   * rest of the catalogue.
-   */
-  engagementPower: float("ENGAGEMENT_POWER", 0.5),
-
-  /** Where the ingest script writes the corpus. Read at build time, not runtime. */
-  corpusPath: process.env.CORPUS_PATH ?? "data/corpus.json",
+  /** How many of them to show per run. Each one costs vision tokens. */
+  referenceSampleSize: int("REFERENCE_SAMPLE_SIZE", 4),
 
   /**
    * Largest accepted upload, in bytes, before base64 overhead. Vercel rejects
@@ -95,5 +57,3 @@ export const config = {
     process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN,
   ),
 };
-
-export type Config = typeof config;

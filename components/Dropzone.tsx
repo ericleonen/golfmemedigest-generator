@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useRef, useState } from "react";
 import type { LoadedImage } from "@/lib/image";
 import { loadImageFile } from "@/lib/image";
@@ -26,9 +28,7 @@ export function Dropzone({ image, onImage, onError }: Props) {
 
   return (
     <div
-      className={`dropzone${dragging ? " dropzone--active" : ""}${
-        image ? " dropzone--filled" : ""
-      }`}
+      className={`dropzone${dragging ? " dropzone--active" : ""}${image ? " dropzone--filled" : ""}`}
       onDragOver={(event) => {
         event.preventDefault();
         setDragging(true);
@@ -62,18 +62,16 @@ export function Dropzone({ image, onImage, onError }: Props) {
       />
       {image ? (
         <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={image.element.src} alt="" className="dropzone__preview" />
           <p className="dropzone__meta">
-            {image.name} · {image.width}×{image.height} · click to replace
+            {image.name} · {image.width}×{image.height} · tap to replace
           </p>
         </>
       ) : (
         <>
-          <span className="dropzone__icon" aria-hidden>
-            ⛳
-          </span>
-          <p className="dropzone__title">Drop a photo here</p>
-          <p className="dropzone__hint">or click to browse, or paste from your clipboard</p>
+          <p className="dropzone__title">Add a photo</p>
+          <p className="dropzone__hint">drop it here, tap to browse, or paste</p>
         </>
       )}
     </div>

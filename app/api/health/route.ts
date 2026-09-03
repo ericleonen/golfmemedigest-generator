@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { config } from "@/lib/config";
-import { corpusStats } from "@/lib/corpus";
+import { listReferenceFiles } from "@/lib/reference";
 import type { HealthResponse } from "@/shared/types";
 
 export const runtime = "nodejs";
@@ -12,8 +12,8 @@ export function GET() {
     model: config.model,
     apiKeyConfigured: config.apiKeyConfigured,
     authRequired: Boolean(config.appPassword),
-    corpus: corpusStats(),
-    sample: { default: config.sampleSize, max: config.maxSampleSize },
+    referenceImages: listReferenceFiles().length,
+    referenceSampleSize: config.referenceSampleSize,
   };
   return NextResponse.json(body);
 }

@@ -1,119 +1,97 @@
 /**
- * Types shared by the browser app, the API server and the corpus ingest script.
- * Keep this file dependency-free so it can be imported from any of them.
+ * Types shared by the browser and the API routes.
+ * Keep this file dependency-free so either side can import it.
  */
 
-/** How a variant's text is laid out over (or around) the source photo. */
-export type MemeLayout = "top-bottom" | "caption-bar" | "lower-third";
+/**
+ * The fonts Claude may choose from. Each maps to a webfont loaded in
+ * app/layout.tsx; the renderer resolves the real family off a CSS variable.
+ */
+export const FONTS = {
+  impact: "Heavy condensed caps — the classic meme look",
+  condensed: "Tall narrow sans — bold, modern, headline-ish",
+  sans: "Clean neutral sans — screenshot and tweet energy",
+  serif: "Elegant high-contrast serif — deadpan, editorial",
+  hand: "Loose handwriting — annotation, scrawled aside",
+} as const;
 
-export const MEME_LAYOUTS: MemeLayout[] = [
-  "top-bottom",
-  "caption-bar",
-  "lower-third",
-];
+export type FontKey = keyof typeof FONTS;
+export const FONT_KEYS = Object.keys(FONTS) as FontKey[];
 
-/** One meme idea returned by Claude. */
-export interface MemeVariant {
-  /** Stable id assigned by the server, used as a React key and download name. */
+/** One run of text placed on the canvas. */
+export interface TextBlock {
+  text: string;
+  font: FontKey;
+  /** ALL CAPS or as written. */
+  uppercase: boolean;
+  /** Hex fill, e.g. "#ffffff". */
+  color: string;
+  /** Outline behind the fill. "none" when the text sits on a flat background. */
+  stroke: "black" | "white" | "none";
+  align: "left" | "center" | "right";
+  /** Centre of the block, as a fraction of the full canvas (0-1). */
+  x: number;
+  y: number;
+  /** Maximum line width, as a fraction of canvas width (0-1). */
+  width: number;
+  /** Font size, as a fraction of canvas width (0-1). */
+  size: number;
+  /** Tilt in degrees, -20 to 20. */
+  rotation: number;
+}
+
+/**
+ * A complete meme. The canvas is the photo, optionally with a solid band added
+ * above and/or below it; blocks are positioned across that whole canvas. That
+ * one mechanism covers Impact-over-photo, a white caption bar, a lower third,
+ * a corner label, or anything else Claude invents.
+ */
+export interface MemeSpec {
   id: string;
-  layout: MemeLayout;
-  /** Impact-style top line. Empty unless layout is "top-bottom". */
-  topText: string;
-  /** Impact-style bottom line. Used by "top-bottom" and "lower-third". */
-  bottomText: string;
-  /** Sentence in the white bar above the photo. Used by "caption-bar". */
-  captionText: string;
-  /** Suggested Instagram caption for the post. */
-  instagramCaption: string;
-  /** Suggested hashtags, without the leading '#'. */
-  hashtags: string[];
-  /** One line on the joke's angle, shown to help pick between variants. */
+  /** Band added above the photo, as a fraction of photo height (0-0.6). */
+  padTop: number;
+  /** Band added below the photo, as a fraction of photo height (0-0.6). */
+  padBottom: number;
+  /** Hex fill for those bands. */
+  background: string;
+  blocks: TextBlock[];
+  /** Under 12 words on the joke's angle, to pick between variants at a glance. */
   angle: string;
+  instagramCaption: string;
+  hashtags: string[];
 }
 
 export interface GenerateRequest {
-  /** Data URL of the (downscaled) source photo: data:image/png;base64,... */
+  /** Data URL of the (downscaled) source photo. */
   image: string;
-  /** Optional short steer from the user, e.g. "make it about slow play". */
+  /** Optional short steer, e.g. "make it about slow play". */
   prompt?: string;
   /** How many variants to ask for. */
   count?: number;
-  /** How many past memes to draw as style context for this run. */
-  sampleSize?: number;
 }
 
 export interface GenerateResponse {
-  variants: MemeVariant[];
-  /** What the model actually saw of the back catalogue for this request. */
-  corpus: CorpusUsage;
+  variants: MemeSpec[];
+  /** How many past posts were shown to Claude as style reference this run. */
+  referencesUsed: number;
   usage: {
     inputTokens: number;
     outputTokens: number;
-    cacheReadInputTokens: number;
-    cacheCreationInputTokens: number;
   };
-}
-
-export interface CorpusUsage {
-  /** Number of memes in data/corpus.json. */
-  total: number;
-  /** Number of memes sent as style context for this request. */
-  used: number;
-  /** Source filenames of the memes that were drawn, newest draw first. */
-  sources: string[];
 }
 
 export interface HealthResponse {
   ok: boolean;
   model: string;
   apiKeyConfigured: boolean;
-  /** True when APP_PASSWORD is set on the server and callers must supply it. */
   authRequired: boolean;
-  corpus: {
-    total: number;
-    /** How many of those carry engagement numbers to weight the draw by. */
-    withEngagement: number;
-    generatedAt: string | null;
-  };
-  /** Default and permitted range for the style-sample size picker. */
-  sample: { default: number; max: number };
+  /** Past memes available in reference/ for the style sample. */
+  referenceImages: number;
+  /** How many of those get shown per run. */
+  referenceSampleSize: number;
 }
 
 export interface ApiError {
   error: string;
   detail?: string;
-}
-
-/** One past meme, as extracted from the account's back catalogue. */
-export interface CorpusMeme {
-  /** sha1 of the source image file, so re-runs of ingest are incremental. */
-  id: string;
-  /** Source file name, for traceability. */
-  source: string;
-  /** The text that appears on the meme, verbatim, newlines preserved. */
-  memeText: string;
-  /** Where that text sits on the image. */
-  layout: MemeLayout | "other";
-  /** What the photo/still actually shows. */
-  imageDescription: string;
-  /** The comedic device: relatable pain, self-own, pro-golf callout, etc. */
-  device: string;
-  /** Short tags: "slow play", "range vs course", "shanks", ... */
-  topics: string[];
-  /** The Instagram caption that was posted with it, if known. */
-  instagramCaption?: string;
-  /** How the post performed, if known. Drives the weighted draw. */
-  engagement?: Engagement;
-}
-
-/** Post performance, as far as it is known. Any field may be missing. */
-export interface Engagement {
-  likes?: number;
-  comments?: number;
-  views?: number;
-}
-
-export interface Corpus {
-  generatedAt: string;
-  memes: CorpusMeme[];
 }

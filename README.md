@@ -1,23 +1,23 @@
-# @golfmemedigest meme generator
+# Golf Meme Digest generator
 
-Drop in a photo, add a few words of steer if you want one, and get back several
-meme variants written in the account's own voice. Pick a favourite, tweak the
-wording, download the PNG.
+Drop in a photo, add a steer if you want one, and get back several finished
+memes — Claude writes the joke *and* designs the layout. Pick one, nudge the
+text, download it.
 
 ## How it works
 
 1. **The browser** downsizes your photo to 1024px and posts it to `/api/generate`.
-2. **The route handler** draws a handful of past memes from the catalogue —
-   randomly, weighted toward the ones that performed best — puts them in the
-   system prompt as the house voice, and asks Claude for N variants of on-image
-   text.
-3. **The browser** draws the winning text over your *full-resolution* photo on a
-   canvas. The preview and the download come from the same renderer, so what you
-   see is what you post.
+2. **The route handler** picks a few of your past memes at random from
+   `reference/`, sends them to Claude as images alongside the new photo, and
+   asks for N variants.
+3. **Claude returns a layout**, not just words: where each run of text sits, how
+   big, which typeface, what colour, whether the canvas gets a solid band above
+   or below the photo.
+4. **The browser draws it** on a canvas over your full-resolution photo. Drag any
+   text to move it, change the words, nudge the size, then download.
 
-The catalogue is what makes the output sound like the account rather than like a
-generic meme bot, so it is worth ingesting properly — see
-[`corpus/README.md`](corpus/README.md).
+There is no catalogue file and no ingest step. Put images in `reference/`,
+commit them, done.
 
 ## Setup
 
@@ -29,62 +29,39 @@ npm run dev
 
 Open http://localhost:3000.
 
-Without a corpus the app still works — it writes from the voice rules in the
-system prompt — but it will not sound like @golfmemedigest until you ingest the
-back catalogue:
+Then put 10-40 of your best past memes in [`reference/`](reference/README.md)
+and commit them. Without them the app still works — it falls back to the voice
+rules in `lib/claude.ts` — but it will not sound or look like your account.
 
-```bash
-# put your past memes in corpus/images/, then:
-npm run ingest
-```
+## The layout system
 
-## How the style sample works
+Claude gets one flexible canvas rather than a menu of fixed templates:
 
-Each run draws a small random sample of past memes (3-5, your pick in the UI)
-rather than sending the whole catalogue. That is deliberate on two counts: a
-varied sample produces genuinely different jokes run to run, where a fixed block
-of everything pulls every request toward the same average — and a handful of
-posts costs a fraction of the tokens.
+- `padTop` / `padBottom` — a solid band added above or below the photo, as a
+  fraction of photo height. Zero for text straight over the image.
+- `blocks` — any number of text runs, each with its own `x`/`y` centre (in
+  fractions of the whole canvas), `width`, `size`, `font`, `color`, `stroke`,
+  `align` and `rotation`.
 
-The draw is weighted by how each post performed, so the voice tracks what
-actually landed:
+That one mechanism covers Impact caps top and bottom, a white caption bar, a
+single line across the bottom, a small handwritten label pinned to something in
+the frame, a deadpan serif line — and combinations nobody wrote a template for.
 
-- **Score.** `likes + COMMENT_WEIGHT × comments` (comments default to 5× a like;
-  they cost the reader more, so they separate "this landed" from "this scrolled
-  past pleasantly"). Set `ENGAGEMENT_MODE=rate` to divide by views instead,
-  which scores the joke rather than how far the algorithm pushed the post.
-- **Weight.** Each score as a ratio of the catalogue median, raised to
-  `ENGAGEMENT_POWER`. The default is **0.5**, not 1, because engagement is
-  heavy-tailed: at 1, one viral post turns up in almost every draw and the
-  variety you wanted disappears. Set it to `0` for a flat random draw, or `2` to
-  let the hits dominate.
-- **Posts with no numbers** are scored at the catalogue median, so a
-  half-annotated catalogue still draws from all of it. With no engagement data
-  at all, the draw is uniformly random.
-- **Nothing is ever fully excluded** — a post that flopped keeps 5% of the
-  median's odds.
+Five typefaces are available: `impact` (Anton), `condensed` (Oswald), `sans`
+(Inter), `serif` (Playfair Display) and `hand` (Caveat). All self-hosted by
+`next/font`, so the canvas renders identically on every machine.
 
-Engagement numbers come from `corpus/engagement.json`; see
-[`corpus/README.md`](corpus/README.md). Instagram's own data export does not
-include like counts, so that file is how you get them in.
+**Nothing Claude returns can produce a broken image.** Numbers are clamped on
+arrival, and the renderer independently keeps every block inside the canvas —
+accounting for the outline width — so text cannot clip off an edge no matter
+what the model returns or where you drag it.
 
-Because the draw is small and popularity-weighted, you do not need to catalogue
-your whole archive — ingesting your best few hundred posts is a reasonable
-place to stop, and `npm run ingest -- --limit 100` reads the highest-engagement
-images first when it has the numbers to sort by.
+## Editing
 
-This is context, not fine-tuning. There is no training step and no model to
-retrain when you post something new — re-run `npm run ingest`, commit, deploy.
-
-## Layouts
-
-| Layout | What it looks like |
-| --- | --- |
-| `top-bottom` | Classic Impact caps at the top and bottom of the photo |
-| `caption-bar` | A white bar above an untouched photo, tweet-style |
-| `lower-third` | One Impact line across the bottom, over a soft dark scrim |
-
-Claude picks a layout per variant, and you can override it in the editor panel.
+Tap any text on the selected meme to select it, then drag it to move. The
+controls underneath change the words, the size, the typeface, the colour, caps,
+and the outline. Download re-renders at your photo's full resolution rather than
+upscaling the preview.
 
 ## Scripts
 
@@ -93,7 +70,6 @@ Claude picks a layout per variant, and you can override it in the editor panel.
 | `npm run dev` | Next dev server on `:3000` |
 | `npm run build` | Production build (typechecks as part of it) |
 | `npm start` | Serve the production build |
-| `npm run ingest` | Build/refresh `data/corpus.json` from the back catalogue |
 | `npm run typecheck` | Typecheck without building |
 
 ## Deploying
@@ -103,37 +79,35 @@ Step-by-step instructions including DNS are in [`DEPLOY.md`](DEPLOY.md).
 `ANTHROPIC_API_KEY` is read only inside `app/api/*`, so it never reaches a
 browser.
 
-Two things matter before this goes on a public URL: commit `data/corpus.json` so
-the deploy ships with the account's voice, and set `APP_PASSWORD` so strangers
-cannot spend your API credits.
+Two things before this goes on a public URL: commit your `reference/` images so
+the deploy has a style to work from, and set `APP_PASSWORD` so strangers cannot
+spend your API credits.
 
 It is a stock Next.js app, so `npm run build && npm start` also runs it on
 Render, Railway, Fly.io or a VPS — which drops Vercel's function time limit and
 lets you run `CLAUDE_EFFORT=high`.
 
-## Configuration
+## The logo
 
-Everything is optional except the API key. See [`.env.example`](.env.example);
-the interesting ones are `CLAUDE_EFFORT` (drop to `low` for faster, cheaper
-generations) and the `ENGAGEMENT_*` knobs above.
+The header uses a CSS reconstruction of the wordmark by default, so the app
+looks right out of the box. To use the real artwork, drop it in at
+`public/logo.png` and set `NEXT_PUBLIC_LOGO=/logo.png`.
 
 ## Layout of the repo
 
 ```
 app/
   page.tsx           the whole UI (client component)
-  layout.tsx         self-hosted Anton + Inter via next/font
-  api/generate/      the meme-writing endpoint
-  api/health/        config + catalogue status, used by the UI badge
+  layout.tsx         the five self-hosted typefaces
+  api/generate/      writes and designs the memes
+  api/health/        config + reference count, used by the UI
 lib/
-  render.ts          canvas meme renderer (previews and downloads)
+  claude.ts          the prompt, the layout schema, the Claude call
+  reference.ts       picks past memes to send as style
+  render.ts          canvas renderer, bounds clamping, hit-testing
   image.ts           file → full-res bitmap + downscaled copy for the API
-  claude.ts          the prompt, the schema, the Claude call (server only)
-  corpus.ts          the weighted random draw over the catalogue
   gate.ts            password check and per-IP rate limit
-components/          Dropzone, MemePreview, VariantEditor
-scripts/ingest.ts    builds the catalogue from your past memes
-shared/types.ts      types used by both sides
-data/corpus.json     the catalogue — committed, bundled into the function
-corpus/              where your past meme images go (git-ignored)
+components/          Logo, Dropzone, MemeCanvas, BlockControls
+reference/           your past memes — committed, sent to Claude as images
+shared/types.ts      the meme spec, shared by both sides
 ```

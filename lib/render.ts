@@ -1,52 +1,76 @@
-import type { MemeVariant } from "@/shared/types";
+import type { FontKey, MemeSpec, TextBlock } from "@/shared/types";
 
 /**
- * Canvas meme renderer. The same function draws the on-screen previews and the
- * file that gets downloaded, so what you pick is exactly what you post.
+ * Canvas meme renderer. Claude decides the layout — bands, block positions,
+ * fonts, colours — and this draws it. The same function produces the on-screen
+ * previews and the downloaded file, so what you see is what you post.
  */
-
-const IMPACT_FALLBACK = `Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif`;
-const SANS_FALLBACK = `"Helvetica Neue", Arial, sans-serif`;
 
 /**
- * next/font generates a hashed family name and exposes it as a CSS variable, so
- * the canvas has to read the variable rather than hardcode "Anton" / "Inter".
+ * next/font generates hashed family names and exposes them as CSS variables,
+ * so the canvas reads the variable rather than hardcoding a family.
  */
-function stack(variable: string, fallback: string): string {
-  if (typeof document === "undefined") return fallback;
-  const family = getComputedStyle(document.documentElement)
-    .getPropertyValue(variable)
-    .trim();
-  return family ? `${family}, ${fallback}` : fallback;
+const FONT_STACKS: Record<FontKey, { variable: string; fallback: string; weight: number }> = {
+  impact: {
+    variable: "--font-impact",
+    fallback: `Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif`,
+    weight: 400,
+  },
+  condensed: {
+    variable: "--font-condensed",
+    fallback: `"Arial Narrow", Impact, sans-serif`,
+    weight: 700,
+  },
+  sans: {
+    variable: "--font-sans",
+    fallback: `"Helvetica Neue", Arial, sans-serif`,
+    weight: 700,
+  },
+  serif: {
+    variable: "--font-serif",
+    fallback: `Georgia, "Times New Roman", serif`,
+    weight: 700,
+  },
+  hand: {
+    variable: "--font-hand",
+    fallback: `"Bradley Hand", "Comic Sans MS", cursive`,
+    weight: 700,
+  },
+};
+
+const LINE_HEIGHT = 1.12;
+
+function fontString(key: FontKey, size: number): string {
+  const stack = FONT_STACKS[key] ?? FONT_STACKS.impact;
+  let family = stack.fallback;
+  if (typeof document !== "undefined") {
+    const resolved = getComputedStyle(document.documentElement)
+      .getPropertyValue(stack.variable)
+      .trim();
+    if (resolved) family = `${resolved}, ${stack.fallback}`;
+  }
+  return `${stack.weight} ${size}px ${family}`;
 }
 
-const impactStack = () => stack("--font-anton", IMPACT_FALLBACK);
-const sansStack = () => stack("--font-inter", SANS_FALLBACK);
-
-const LINE_HEIGHT = 1.06;
-const CAPTION_LINE_HEIGHT = 1.3;
+/** Webfonts must be loaded before the first draw or the layout shifts after. */
+export async function ensureFonts(): Promise<void> {
+  if (typeof document === "undefined" || !("fonts" in document)) return;
+  try {
+    await Promise.all(
+      (Object.keys(FONT_STACKS) as FontKey[]).map((key) =>
+        document.fonts.load(fontString(key, 100)),
+      ),
+    );
+    await document.fonts.ready;
+  } catch {
+    // Fall back to system fonts; the stacks above still render.
+  }
+}
 
 export interface RenderSource {
   image: CanvasImageSource;
   width: number;
   height: number;
-}
-
-/**
- * Anton and Inter are webfonts, so the first draw has to wait for them or the
- * browser silently substitutes a fallback and the layout shifts afterwards.
- */
-export async function ensureFonts(): Promise<void> {
-  if (typeof document === "undefined" || !("fonts" in document)) return;
-  try {
-    await Promise.all([
-      document.fonts.load(`400 100px ${impactStack()}`),
-      document.fonts.load(`700 100px ${sansStack()}`),
-    ]);
-    await document.fonts.ready;
-  } catch {
-    // Fall back to whatever the system has; the stacks above still look fine.
-  }
 }
 
 function wrap(
@@ -57,7 +81,10 @@ function wrap(
   const lines: string[] = [];
   for (const paragraph of text.split("\n")) {
     const words = paragraph.split(/\s+/).filter(Boolean);
-    if (words.length === 0) continue;
+    if (words.length === 0) {
+      lines.push("");
+      continue;
+    }
     let line = "";
     for (const word of words) {
       const candidate = line ? `${line} ${word}` : word;
@@ -73,85 +100,151 @@ function wrap(
   return lines;
 }
 
-interface FitOptions {
-  font: (size: number) => string;
-  maxWidth: number;
-  maxHeight: number;
-  startSize: number;
-  minSize: number;
-  lineHeight: number;
-}
-
-/** Shrinks the font until the wrapped text fits the box it has been given. */
-function fit(
+/**
+ * Lays out one block at the size Claude asked for, shrinking only if a single
+ * unbreakable word would still overflow. Claude's size is a design decision, so
+ * it is honoured wherever it fits.
+ */
+function layout(
   ctx: CanvasRenderingContext2D,
-  text: string,
-  opts: FitOptions,
+  block: TextBlock,
+  canvasWidth: number,
 ): { lines: string[]; size: number } {
-  let lines: string[] = [];
-  let size = opts.startSize;
-  for (; size >= opts.minSize; size -= Math.max(1, Math.round(size * 0.04))) {
-    ctx.font = opts.font(size);
-    lines = wrap(ctx, text, opts.maxWidth);
+  const text = block.uppercase ? block.text.toUpperCase() : block.text;
+  const maxWidth = block.width * canvasWidth;
+  let size = Math.max(8, block.size * canvasWidth);
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    ctx.font = fontString(block.font, size);
+    const lines = wrap(ctx, text, maxWidth);
     const widest = lines.reduce(
       (max, line) => Math.max(max, ctx.measureText(line).width),
       0,
     );
-    const height = lines.length * size * opts.lineHeight;
-    if (widest <= opts.maxWidth && height <= opts.maxHeight) {
-      return { lines, size };
-    }
+    if (widest <= maxWidth || size <= 10) return { lines, size };
+    size *= 0.94;
   }
-  size = opts.minSize;
-  ctx.font = opts.font(size);
-  return { lines: wrap(ctx, text, opts.maxWidth), size };
+
+  ctx.font = fontString(block.font, size);
+  return { lines: wrap(ctx, text, maxWidth), size };
 }
 
-function drawImpactLines(
+/**
+ * Everything needed to draw or hit-test one block, with its centre nudged so
+ * the text stays inside the canvas. Claude places blocks by eye and the human
+ * drags them around, so neither can be trusted to keep a two-line heading off
+ * the top edge — this is the backstop that makes clipping impossible.
+ */
+function resolve(
   ctx: CanvasRenderingContext2D,
-  lines: string[],
-  size: number,
-  centerX: number,
-  top: number,
+  block: TextBlock,
+  canvasWidth: number,
+  canvasHeight: number,
+) {
+  const { lines, size } = layout(ctx, block, canvasWidth);
+  const widest = lines.reduce(
+    (max, line) => Math.max(max, ctx.measureText(line).width),
+    0,
+  );
+  const height = lines.length * size * LINE_HEIGHT;
+  // The outline is painted centred on the glyph edge, so half of it sits
+  // outside the measured box — margin has to cover that or strokes kiss the
+  // canvas edge even when the text itself is inside.
+  const strokeAllowance =
+    block.stroke === "none" ? 0 : Math.max(2, size * 0.16) / 2;
+  const margin = canvasWidth * 0.022 + strokeAllowance;
+
+  const halfWidth = widest / 2;
+  const halfHeight = height / 2;
+
+  // A block wider or taller than the canvas gets centred rather than jammed
+  // against an edge; anything else is pushed just inside the margin.
+  const centreX =
+    widest + margin * 2 >= canvasWidth
+      ? canvasWidth / 2
+      : Math.min(
+          Math.max(block.x * canvasWidth, halfWidth + margin),
+          canvasWidth - halfWidth - margin,
+        );
+  const centreY =
+    height + margin * 2 >= canvasHeight
+      ? canvasHeight / 2
+      : Math.min(
+          Math.max(block.y * canvasHeight, halfHeight + margin),
+          canvasHeight - halfHeight - margin,
+        );
+
+  return { lines, size, widest, height, centreX, centreY };
+}
+
+/** The box a block occupies, in canvas pixels. Used for drawing and hit-testing. */
+export function blockBounds(
+  ctx: CanvasRenderingContext2D,
+  block: TextBlock,
+  canvasWidth: number,
+  canvasHeight: number,
+): { x: number; y: number; width: number; height: number } {
+  const { widest, height, centreX, centreY } = resolve(ctx, block, canvasWidth, canvasHeight);
+  return {
+    x: centreX - widest / 2,
+    y: centreY - height / 2,
+    width: widest,
+    height,
+  };
+}
+
+function drawBlock(
+  ctx: CanvasRenderingContext2D,
+  block: TextBlock,
+  canvasWidth: number,
+  canvasHeight: number,
 ): void {
-  ctx.font = `400 ${size}px ${impactStack()}`;
-  ctx.textAlign = "center";
+  const { lines, size, height, centreX, centreY } = resolve(
+    ctx,
+    block,
+    canvasWidth,
+    canvasHeight,
+  );
+  const half = (block.width * canvasWidth) / 2;
+
+  ctx.save();
+  ctx.translate(centreX, centreY);
+  if (block.rotation) ctx.rotate((block.rotation * Math.PI) / 180);
+
+  ctx.font = fontString(block.font, size);
+  ctx.textAlign = block.align;
   ctx.textBaseline = "top";
   ctx.lineJoin = "round";
   ctx.miterLimit = 2;
-  ctx.lineWidth = Math.max(2, size * 0.15);
-  ctx.strokeStyle = "#000000";
-  ctx.fillStyle = "#ffffff";
+
+  // Alignment is relative to the block's own box, so left/right anchor to the
+  // edges of the width Claude gave it rather than to the canvas.
+  const anchorX = block.align === "left" ? -half : block.align === "right" ? half : 0;
 
   lines.forEach((line, i) => {
-    const y = top + i * size * LINE_HEIGHT;
-    ctx.strokeText(line, centerX, y);
-    ctx.fillText(line, centerX, y);
+    const y = -height / 2 + i * size * LINE_HEIGHT;
+    if (block.stroke !== "none") {
+      ctx.lineWidth = Math.max(2, size * 0.16);
+      ctx.strokeStyle = block.stroke === "white" ? "#ffffff" : "#000000";
+      ctx.strokeText(line, anchorX, y);
+    }
+    ctx.fillStyle = block.color;
+    ctx.fillText(line, anchorX, y);
   });
-}
 
-/** Darkens the area behind bottom text so white-on-white stays readable. */
-function drawScrim(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  fromY: number,
-  toY: number,
-): void {
-  const gradient = ctx.createLinearGradient(0, fromY, 0, toY);
-  gradient.addColorStop(0, "rgba(0,0,0,0)");
-  gradient.addColorStop(1, "rgba(0,0,0,0.45)");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, fromY, width, toY - fromY);
+  ctx.restore();
 }
 
 export interface RenderOptions {
   /** Longest edge of the output, in pixels. */
   maxWidth?: number;
+  /** Draw a marquee around this block — used while editing. */
+  highlightBlock?: number;
 }
 
 export function renderMeme(
   source: RenderSource,
-  variant: MemeVariant,
+  spec: MemeSpec,
   options: RenderOptions = {},
 ): HTMLCanvasElement {
   const maxWidth = options.maxWidth ?? 1400;
@@ -159,84 +252,78 @@ export function renderMeme(
   const width = Math.round(source.width * scale);
   const imageHeight = Math.round(source.height * scale);
 
+  const padTop = Math.round(spec.padTop * imageHeight);
+  const padBottom = Math.round(spec.padBottom * imageHeight);
+  const height = imageHeight + padTop + padBottom;
+
   const canvas = document.createElement("canvas");
-  const measureCtx = canvas.getContext("2d");
-  if (!measureCtx) throw new Error("Canvas 2D is unavailable in this browser.");
-
-  const margin = Math.round(width * 0.035);
-  const textWidth = width - margin * 2;
-
-  if (variant.layout === "caption-bar") {
-    const captionSize = Math.round(width * 0.058);
-    measureCtx.font = `700 ${captionSize}px ${sansStack()}`;
-    const lines = wrap(measureCtx, variant.captionText || " ", textWidth);
-    const barHeight = Math.round(
-      lines.length * captionSize * CAPTION_LINE_HEIGHT + margin * 2,
-    );
-
-    canvas.width = width;
-    canvas.height = imageHeight + barHeight;
-    const ctx = canvas.getContext("2d")!;
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, barHeight);
-    ctx.fillStyle = "#111111";
-    ctx.font = `700 ${captionSize}px ${sansStack()}`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    lines.forEach((line, i) => {
-      ctx.fillText(
-        line,
-        width / 2,
-        margin + i * captionSize * CAPTION_LINE_HEIGHT,
-      );
-    });
-
-    ctx.drawImage(source.image, 0, barHeight, width, imageHeight);
-    return canvas;
-  }
-
   canvas.width = width;
-  canvas.height = imageHeight;
-  const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(source.image, 0, 0, width, imageHeight);
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2D is unavailable in this browser.");
 
-  const impactFont = (size: number) => `400 ${size}px ${impactStack()}`;
-  const startSize = Math.round(width * 0.115);
-  const minSize = Math.round(width * 0.042);
-
-  if (variant.layout === "top-bottom" && variant.topText.trim()) {
-    const top = fit(ctx, variant.topText.toUpperCase(), {
-      font: impactFont,
-      maxWidth: textWidth,
-      maxHeight: imageHeight * 0.34,
-      startSize,
-      minSize,
-      lineHeight: LINE_HEIGHT,
-    });
-    drawImpactLines(ctx, top.lines, top.size, width / 2, margin);
+  if (padTop > 0 || padBottom > 0) {
+    ctx.fillStyle = spec.background;
+    ctx.fillRect(0, 0, width, height);
   }
+  ctx.drawImage(source.image, 0, padTop, width, imageHeight);
 
-  const bottomText = variant.bottomText.trim();
-  if (bottomText) {
-    const bottom = fit(ctx, bottomText.toUpperCase(), {
-      font: impactFont,
-      maxWidth: textWidth,
-      maxHeight: imageHeight * (variant.layout === "lower-third" ? 0.4 : 0.34),
-      startSize,
-      minSize,
-      lineHeight: LINE_HEIGHT,
-    });
-    const blockHeight = bottom.lines.length * bottom.size * LINE_HEIGHT;
-    const top = imageHeight - margin - blockHeight;
+  spec.blocks.forEach((block) => drawBlock(ctx, block, width, height));
 
-    if (variant.layout === "lower-third") {
-      drawScrim(ctx, width, Math.max(0, top - margin * 2), imageHeight);
+  if (options.highlightBlock != null) {
+    const block = spec.blocks[options.highlightBlock];
+    if (block) {
+      const box = blockBounds(ctx, block, width, height);
+      const inset = Math.max(4, width * 0.008);
+      ctx.save();
+      ctx.setLineDash([inset, inset]);
+      ctx.lineWidth = Math.max(2, width * 0.004);
+      ctx.strokeStyle = "#00e0ff";
+      ctx.strokeRect(
+        box.x - inset,
+        box.y - inset,
+        box.width + inset * 2,
+        box.height + inset * 2,
+      );
+      ctx.restore();
     }
-    drawImpactLines(ctx, bottom.lines, bottom.size, width / 2, top);
   }
 
   return canvas;
+}
+
+/** Which block is under a point, in 0-1 canvas coordinates. Topmost wins. */
+export function blockAtPoint(
+  source: RenderSource,
+  spec: MemeSpec,
+  point: { x: number; y: number },
+): number | null {
+  const canvas = document.createElement("canvas");
+  const width = 1000;
+  const imageHeight = Math.round((source.height / source.width) * width);
+  const height =
+    imageHeight + Math.round(spec.padTop * imageHeight) + Math.round(spec.padBottom * imageHeight);
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  const px = point.x * width;
+  const py = point.y * height;
+  const pad = width * 0.015;
+
+  for (let i = spec.blocks.length - 1; i >= 0; i--) {
+    const box = blockBounds(ctx, spec.blocks[i]!, width, height);
+    if (
+      px >= box.x - pad &&
+      px <= box.x + box.width + pad &&
+      py >= box.y - pad &&
+      py <= box.y + box.height + pad
+    ) {
+      return i;
+    }
+  }
+  return null;
 }
 
 export function canvasToBlob(
