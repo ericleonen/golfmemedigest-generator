@@ -1,0 +1,13 @@
+node_modules
+dist
+.env
+.env.local
+.DS_Store
+*.log
+
+# Generated meme corpus + the raw images it is built from.
+data/corpus.json
+corpus/images/*
+!corpus/images/.gitkeep
+corpus/captions.json
+*.tsbuildinfo
