@@ -71,22 +71,17 @@ VARIETY
 - Spread the layouts. Do not return the same layout for every variant unless the photo only works one way.
 
 VOICE
-- Below are memes this account has already posted, with the text that appeared on them and a description of the photo. That is the house voice: match its rhythm, its length, its bluntness and its subject matter. Do not copy a past caption word for word, and do not reuse a past joke unless the new photo genuinely earns it.`;
+- Below are a few memes this account has already posted, drawn at random and weighted toward the ones that performed best. They are a sample, not the whole account: read them for rhythm, length, bluntness and subject matter, and do not assume the account only posts what these few happen to cover. Do not copy a past caption word for word, and do not reuse a past joke unless the new photo genuinely earns it.`;
 
-function buildSystem(corpusBlock: string, corpusNote: string) {
+function buildSystem(corpusBlock: string) {
+  // No cache_control here on purpose. The sample is redrawn every request, so
+  // there is no stable prefix worth a breakpoint, and the instructions alone
+  // fall under the API's minimum cacheable prefix.
   const text = corpusBlock
-    ? `${INSTRUCTIONS}\n\n=== @golfmemedigest back catalogue (${corpusNote}) ===\n\n${corpusBlock}\n\n=== end of back catalogue ===`
+    ? `${INSTRUCTIONS}\n\n=== a few posts from @golfmemedigest ===\n\n${corpusBlock}\n\n=== end of examples ===`
     : `${INSTRUCTIONS}\n\n(No back catalogue has been ingested yet. Write in the voice described above.)`;
 
-  return [
-    {
-      type: "text" as const,
-      text,
-      // The instructions plus the catalogue are byte-identical across requests,
-      // so this whole prefix is served from cache after the first call.
-      cache_control: { type: "ephemeral" as const },
-    },
-  ];
+  return text;
 }
 
 export class BadImageError extends Error {}
@@ -125,13 +120,10 @@ export async function generateVariants(opts: {
   image: string;
   prompt?: string;
   count: number;
+  sampleSize?: number;
 }): Promise<GenerateResponse> {
   const { mediaType, data } = parseDataUrl(opts.image);
-  const { block, usage: corpusUsage } = buildCorpusContext();
-  const corpusNote =
-    corpusUsage.mode === "full"
-      ? `all ${corpusUsage.total} posts`
-      : `${corpusUsage.used} of ${corpusUsage.total} posts, sampled`;
+  const { block, usage: corpusUsage } = buildCorpusContext(opts.sampleSize);
 
   const steer = opts.prompt?.trim();
   const task = [
@@ -149,7 +141,7 @@ export async function generateVariants(opts: {
     // If a safety classifier declines the request, the server retries on a
     // comparable model instead of handing back an unusable turn.
     fallbacks: "default",
-    system: buildSystem(block, corpusNote),
+    system: buildSystem(block),
     output_config: {
       effort: config.effort,
       format: betaZodOutputFormat(ResultSchema),

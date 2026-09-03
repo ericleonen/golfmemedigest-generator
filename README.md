@@ -7,9 +7,10 @@ wording, download the PNG.
 ## How it works
 
 1. **The browser** downsizes your photo to 1024px and posts it to `/api/generate`.
-2. **The route handler** builds a system prompt out of the account's back catalogue —
-   every past meme it has ingested, with the text that was on it and a
-   description of the photo — and asks Claude for N variants of on-image text.
+2. **The route handler** draws a handful of past memes from the catalogue —
+   randomly, weighted toward the ones that performed best — puts them in the
+   system prompt as the house voice, and asks Claude for N variants of on-image
+   text.
 3. **The browser** draws the winning text over your *full-resolution* photo on a
    canvas. The preview and the download come from the same renderer, so what you
    see is what you post.
@@ -37,26 +38,43 @@ back catalogue:
 npm run ingest
 ```
 
-## The corpus, and the "entire catalogue" question
+## How the style sample works
 
-The whole back catalogue is sent as context on every request, which is the ideal
-and is realistic given Claude's 1M-token context: a few thousand catalogued
-memes is on the order of 100k tokens.
+Each run draws a small random sample of past memes (3-5, your pick in the UI)
+rather than sending the whole catalogue. That is deliberate on two counts: a
+varied sample produces genuinely different jokes run to run, where a fixed block
+of everything pulls every request toward the same average — and a handful of
+posts costs a fraction of the tokens.
 
-Past `CORPUS_MAX_CHARS` (default 400,000 characters, roughly 100k tokens) it
-falls back to a random sample. That sample is **seeded on a timer** rather than
-re-rolled per request: within `CORPUS_SAMPLE_TTL_MS` (default 4 minutes, just
-under the prompt-cache TTL) every request sends a byte-identical prefix, so the
-catalogue is served from Claude's prompt cache at a tenth of the price instead of
-being re-billed in full on every generate. It rotates to a fresh sample after
-that, so you still see the whole catalogue's influence over a session.
+The draw is weighted by how each post performed, so the voice tracks what
+actually landed:
 
-Either way, the response tells the UI which mode it used, and the badge in the
-header shows it.
+- **Score.** `likes + COMMENT_WEIGHT × comments` (comments default to 5× a like;
+  they cost the reader more, so they separate "this landed" from "this scrolled
+  past pleasantly"). Set `ENGAGEMENT_MODE=rate` to divide by views instead,
+  which scores the joke rather than how far the algorithm pushed the post.
+- **Weight.** Each score as a ratio of the catalogue median, raised to
+  `ENGAGEMENT_POWER`. The default is **0.5**, not 1, because engagement is
+  heavy-tailed: at 1, one viral post turns up in almost every draw and the
+  variety you wanted disappears. Set it to `0` for a flat random draw, or `2` to
+  let the hits dominate.
+- **Posts with no numbers** are scored at the catalogue median, so a
+  half-annotated catalogue still draws from all of it. With no engagement data
+  at all, the draw is uniformly random.
+- **Nothing is ever fully excluded** — a post that flopped keeps 5% of the
+  median's odds.
+
+Engagement numbers come from `corpus/engagement.json`; see
+[`corpus/README.md`](corpus/README.md). Instagram's own data export does not
+include like counts, so that file is how you get them in.
+
+Because the draw is small and popularity-weighted, you do not need to catalogue
+your whole archive — ingesting your best few hundred posts is a reasonable
+place to stop, and `npm run ingest -- --limit 100` reads the highest-engagement
+images first when it has the numbers to sort by.
 
 This is context, not fine-tuning. There is no training step and no model to
-retrain when you post something new — re-run `npm run ingest` and the next
-request picks it up.
+retrain when you post something new — re-run `npm run ingest`, commit, deploy.
 
 ## Layouts
 
@@ -96,8 +114,8 @@ lets you run `CLAUDE_EFFORT=high`.
 ## Configuration
 
 Everything is optional except the API key. See [`.env.example`](.env.example);
-the interesting ones are `CLAUDE_EFFORT` (drop to `medium` or `low` for faster,
-cheaper generations) and `CORPUS_MAX_CHARS`.
+the interesting ones are `CLAUDE_EFFORT` (drop to `low` for faster, cheaper
+generations) and the `ENGAGEMENT_*` knobs above.
 
 ## Layout of the repo
 
@@ -111,7 +129,7 @@ lib/
   render.ts          canvas meme renderer (previews and downloads)
   image.ts           file → full-res bitmap + downscaled copy for the API
   claude.ts          the prompt, the schema, the Claude call (server only)
-  corpus.ts          catalogue budgeting and cache-stable sampling
+  corpus.ts          the weighted random draw over the catalogue
   gate.ts            password check and per-IP rate limit
 components/          Dropzone, MemePreview, VariantEditor
 scripts/ingest.ts    builds the catalogue from your past memes

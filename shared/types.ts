@@ -38,6 +38,8 @@ export interface GenerateRequest {
   prompt?: string;
   /** How many variants to ask for. */
   count?: number;
+  /** How many past memes to draw as style context for this run. */
+  sampleSize?: number;
 }
 
 export interface GenerateResponse {
@@ -57,8 +59,8 @@ export interface CorpusUsage {
   total: number;
   /** Number of memes sent as style context for this request. */
   used: number;
-  /** "full" when the whole catalogue fit in the budget, else "sample". */
-  mode: "full" | "sample" | "empty";
+  /** Source filenames of the memes that were drawn, newest draw first. */
+  sources: string[];
 }
 
 export interface HealthResponse {
@@ -69,9 +71,12 @@ export interface HealthResponse {
   authRequired: boolean;
   corpus: {
     total: number;
-    mode: "full" | "sample" | "empty";
+    /** How many of those carry engagement numbers to weight the draw by. */
+    withEngagement: number;
     generatedAt: string | null;
   };
+  /** Default and permitted range for the style-sample size picker. */
+  sample: { default: number; max: number };
 }
 
 export interface ApiError {
@@ -97,6 +102,15 @@ export interface CorpusMeme {
   topics: string[];
   /** The Instagram caption that was posted with it, if known. */
   instagramCaption?: string;
+  /** How the post performed, if known. Drives the weighted draw. */
+  engagement?: Engagement;
+}
+
+/** Post performance, as far as it is known. Any field may be missing. */
+export interface Engagement {
+  likes?: number;
+  comments?: number;
+  views?: number;
 }
 
 export interface Corpus {

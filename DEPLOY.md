@@ -32,16 +32,19 @@ at build time, so the deploy ships whatever that file holds at that commit.
 
 ```bash
 # Put your past memes in corpus/images/, or use an Instagram export:
-npm run ingest -- --instagram-export ~/Downloads/instagram-golfmemedigest
+npm run ingest -- --instagram-export ~/Downloads/instagram-golfmemedigest --limit 100
 
 git add data/corpus.json
 git commit -m "Ingest back catalogue"
 git push
 ```
 
-Add `--limit 25` first if you want to see what it costs before committing to the
-whole archive. Only the extracted text catalogue is committed; the images stay
-out of git.
+Add `corpus/engagement.json` with likes/comments per post first (see
+[`corpus/README.md`](corpus/README.md)) — the app weights its random draw by
+those numbers, and ingest then reads your best posts first, so `--limit 100`
+catalogues your 100 strongest rather than the first 100 alphabetically.
+
+Only the extracted text catalogue is committed; the images stay out of git.
 
 ## Step 3 — Deploy to Vercel
 
@@ -121,17 +124,16 @@ other branches get their own preview URL.
 `data/corpus.json`, push. Ingest is incremental — it only pays for images it has
 not read before.
 
-**Watching the spend.** <https://console.anthropic.com> → Usage. The catalogue
-goes out on every generation but is served from Anthropic's prompt cache at
-roughly a tenth of the price when requests land within a few minutes of each
-other. Bursts are much cheaper per meme than one request an hour.
+**Watching the spend.** <https://console.anthropic.com> → Usage. Only a handful
+of past memes go out per request, so the input side is small; most of the cost
+is the photo and the variants Claude writes back.
 
 **Turning the cost down,** in order of impact — all of them are Vercel
 environment variables, no code change:
 
 1. `CLAUDE_EFFORT=low`
-2. `CORPUS_MAX_CHARS=200000` — sends half as much catalogue per request
-3. `VARIANT_COUNT=2` — halves the output tokens
+2. `VARIANT_COUNT=2` — halves the output tokens
+3. `SAMPLE_SIZE=3` — a slightly smaller style sample
 
 **Abuse.** `APP_PASSWORD` is the real lock. `RATE_LIMIT_PER_HOUR` (default 30
 per IP) is a speed bump only: the counter lives in one function instance's

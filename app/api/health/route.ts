@@ -13,6 +13,7 @@ export function GET() {
     apiKeyConfigured: config.apiKeyConfigured,
     authRequired: Boolean(config.appPassword),
     corpus: corpusStats(),
+    sample: { default: config.sampleSize, max: config.maxSampleSize },
   };
   return NextResponse.json(body);
 }

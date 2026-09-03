@@ -5,6 +5,14 @@ function int(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function float(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseFloat(raw);
+  // Explicit check, not `|| fallback`: 0 is a meaningful value here.
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 export const config = {
   /** Anthropic model used for meme writing and for corpus ingest. */
   model: process.env.CLAUDE_MODEL ?? "claude-opus-5",
@@ -26,19 +34,37 @@ export const config = {
   defaultVariantCount: int("VARIANT_COUNT", 4),
   maxVariantCount: int("MAX_VARIANT_COUNT", 6),
 
-  /**
-   * Character budget for the back-catalogue context. The whole corpus is sent
-   * when it fits under this; past it, a rotating random sample is sent instead.
-   * ~4 chars per token, so 400k chars is roughly 100k tokens.
-   */
-  corpusMaxChars: int("CORPUS_MAX_CHARS", 400_000),
+  /** How many past memes to show as style context, when the UI does not say. */
+  sampleSize: int("SAMPLE_SIZE", 4),
+  maxSampleSize: int("MAX_SAMPLE_SIZE", 8),
 
   /**
-   * How long one random sample stays stable, in ms. Keeping this under the
-   * 5 minute prompt-cache TTL means back-to-back requests reuse the cached
-   * prefix instead of paying full price for a fresh sample every time.
+   * A comment is worth this many likes when scoring a past post. Comments cost
+   * the reader more, so they separate "this landed" from "this scrolled past
+   * pleasantly".
    */
-  corpusSampleTtlMs: int("CORPUS_SAMPLE_TTL_MS", 4 * 60 * 1000),
+  commentWeight: int("COMMENT_WEIGHT", 5),
+
+  /**
+   * "absolute" ranks by raw likes and comments. "rate" divides by views, which
+   * scores the joke rather than how far the algorithm pushed the post — better
+   * once your reach is uneven, but it needs view counts on every post.
+   */
+  engagementMode: (process.env.ENGAGEMENT_MODE ?? "absolute") as
+    | "absolute"
+    | "rate",
+
+  /**
+   * How hard popularity pulls the draw, as an exponent on each post's score
+   * relative to the catalogue median. 0 is a flat random sample, 1 is
+   * proportional, 2 strongly favours the hits.
+   *
+   * The default is 0.5 because engagement is heavy-tailed: at 1, one viral post
+   * turns up in almost every draw and the variety you wanted from sampling
+   * disappears. Square-rooting keeps the ordering while leaving room for the
+   * rest of the catalogue.
+   */
+  engagementPower: float("ENGAGEMENT_POWER", 0.5),
 
   /** Where the ingest script writes the corpus. Read at build time, not runtime. */
   corpusPath: process.env.CORPUS_PATH ?? "data/corpus.json",

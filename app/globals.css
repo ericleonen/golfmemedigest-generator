@@ -183,6 +183,19 @@ select:focus {
   outline-offset: 1px;
 }
 
+.controls__pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.drawn {
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .segmented {
   display: inline-flex;
   border: 1px solid var(--line-strong);
@@ -204,6 +217,11 @@ select:focus {
 .segmented__item--active {
   background: var(--accent);
   color: var(--accent-ink);
+}
+
+.segmented__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Buttons ----------------------------------------------------------------- */

@@ -9,7 +9,8 @@
       "imageDescription": "Split image: a smooth practice swing on the left, a lunging over-the-top move on the right.",
       "device": "relatable pain, the two versions of the same golfer",
       "topics": ["range", "first tee", "swing"],
-      "instagramCaption": "Nobody has ever been the same guy twice."
+      "instagramCaption": "Nobody has ever been the same guy twice.",
+      "engagement": { "likes": 4200, "comments": 88, "views": 91000 }
     },
     {
       "id": "another-sha1",

@@ -5,12 +5,18 @@
  *   npm run ingest -- --limit 25            # only the first 25 new files
  *   npm run ingest -- --concurrency 6
  *   npm run ingest -- --instagram-export ~/Downloads/instagram-export
+ *   npm run ingest -- --engagement corpus/engagement.json --limit 100
  *   npm run ingest -- --rebuild             # re-read files already ingested
  *
  * Each image is read once by Claude, which pulls out the text on the meme, the
  * layout, what the photo shows and the comedic device. The result is appended
  * to data/corpus.json, keyed by file hash, so re-running only costs money for
  * images that are new.
+ *
+ * If corpus/engagement.json exists, its numbers are attached to each meme (the
+ * app weights its random draw by them) and the best-performing images are read
+ * first — so `--limit 100` catalogues your 100 strongest posts, not the first
+ * 100 alphabetically.
  */
 import "./env"; // must stay first: populates process.env before config reads it
 import crypto from "node:crypto";
@@ -20,7 +26,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import * as z from "zod";
 import { config } from "../lib/config";
-import type { Corpus, CorpusMeme, MemeLayout } from "@/shared/types";
+import type {
+  Corpus,
+  CorpusMeme,
+  Engagement,
+  MemeLayout,
+} from "@/shared/types";
 
 const IMAGE_EXTENSIONS = new Map<string, string>([
   [".jpg", "image/jpeg"],
@@ -67,6 +78,7 @@ const ExtractionSchema = z.object({
 interface Args {
   imagesDir: string;
   captionsFile: string;
+  engagementFile: string;
   instagramExport: string | null;
   limit: number;
   concurrency: number;
@@ -78,6 +90,7 @@ function parseArgs(argv: string[]): Args {
   const args: Args = {
     imagesDir: "corpus/images",
     captionsFile: "corpus/captions.json",
+    engagementFile: "corpus/engagement.json",
     instagramExport: null,
     limit: Infinity,
     concurrency: 4,
@@ -94,6 +107,10 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--captions":
         args.captionsFile = value!;
+        i++;
+        break;
+      case "--engagement":
+        args.engagementFile = value!;
         i++;
         break;
       case "--instagram-export":
@@ -205,6 +222,53 @@ function readInstagramExport(root: string): {
   return { captions, images: [...new Set(images)].sort() };
 }
 
+/**
+ * Reads corpus/engagement.json: a map of image file name (or path relative to
+ * the images directory) to whatever performance numbers you have.
+ *
+ *   { "shank.jpg": { "likes": 4200, "comments": 88, "views": 91000 } }
+ *
+ * Every field is optional. Instagram's own data export does not include like
+ * counts, so this file is how you get them in — see corpus/README.md.
+ */
+function loadEngagement(
+  file: string,
+  imagesDir: string,
+): Map<string, Engagement> {
+  const map = new Map<string, Engagement>();
+  if (!fs.existsSync(file)) return map;
+
+  let raw: Record<string, Engagement>;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, Engagement>;
+  } catch (err) {
+    console.warn(`Could not read ${file}: ${err}`);
+    return map;
+  }
+
+  let loaded = 0;
+  for (const [name, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const entry: Engagement = {};
+    if (typeof value.likes === "number") entry.likes = value.likes;
+    if (typeof value.comments === "number") entry.comments = value.comments;
+    if (typeof value.views === "number") entry.views = value.views;
+    if (Object.keys(entry).length === 0) continue;
+    // Accept a bare file name, a path under the images dir, or an absolute one.
+    map.set(path.resolve(imagesDir, name), entry);
+    map.set(path.resolve(name), entry);
+    loaded++;
+  }
+  console.log(`Loaded engagement for ${loaded} posts from ${file}`);
+  return map;
+}
+
+/** Rough score used only to decide which images to read first under --limit. */
+function ingestPriority(engagement: Engagement | undefined): number {
+  if (!engagement) return -1;
+  return (engagement.likes ?? 0) + 5 * (engagement.comments ?? 0);
+}
+
 function loadExistingCorpus(file: string): Corpus {
   if (!fs.existsSync(file)) return { generatedAt: "", memes: [] };
   try {
@@ -239,6 +303,7 @@ const client = new Anthropic();
 async function extract(
   file: string,
   instagramCaption: string | undefined,
+  engagement: Engagement | undefined,
 ): Promise<CorpusMeme | null> {
   const bytes = fs.readFileSync(file);
   if (bytes.byteLength > MAX_IMAGE_BYTES) {
@@ -302,6 +367,7 @@ async function extract(
     device: parsed.device,
     topics: parsed.topics,
     ...(instagramCaption ? { instagramCaption } : {}),
+    ...(engagement ? { engagement } : {}),
   };
 }
 
@@ -344,6 +410,20 @@ async function main() {
     return;
   }
 
+  const engagement = loadEngagement(args.engagementFile, args.imagesDir);
+
+  // Best posts first, so `--limit 100` reads your 100 strongest rather than
+  // whichever 100 sort first alphabetically. Files with no numbers go last.
+  if (engagement.size > 0) {
+    files = files
+      .slice()
+      .sort(
+        (a, b) =>
+          ingestPriority(engagement.get(path.resolve(b))) -
+          ingestPriority(engagement.get(path.resolve(a))),
+      );
+  }
+
   const existing = loadExistingCorpus(corpusFile);
   const known = new Set(existing.memes.map((meme) => meme.id));
 
@@ -365,7 +445,15 @@ async function main() {
   );
 
   if (args.dryRun || pending.length === 0) {
-    if (args.dryRun) console.log("--dry-run, stopping before any API calls.");
+    if (args.dryRun) {
+      for (const [i, file] of pending.entries()) {
+        const score = ingestPriority(engagement.get(path.resolve(file)));
+        console.log(
+          `  ${i + 1}. ${path.basename(file)}${score < 0 ? "" : ` (score ${score})`}`,
+        );
+      }
+      console.log("--dry-run, stopping before any API calls.");
+    }
     return;
   }
 
@@ -381,7 +469,11 @@ async function main() {
     args.concurrency,
     async (file) => {
       try {
-        const meme = await extract(file, captions.get(path.resolve(file)));
+        const meme = await extract(
+          file,
+          captions.get(path.resolve(file)),
+          engagement.get(path.resolve(file)),
+        );
         done++;
         if (meme) console.log(`[${done}/${pending.length}] ${meme.source}`);
         return meme;

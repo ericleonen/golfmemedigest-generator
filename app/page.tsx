@@ -16,11 +16,13 @@ import type { LoadedImage } from "@/lib/image";
 import { downloadCanvas, ensureFonts, renderMeme } from "@/lib/render";
 
 const COUNT_CHOICES = [2, 4, 6];
+const SAMPLE_CHOICES = [3, 4, 5];
 
 export default function Page() {
   const [image, setImage] = useState<LoadedImage | null>(null);
   const [prompt, setPrompt] = useState("");
   const [count, setCount] = useState(4);
+  const [sampleSize, setSampleSize] = useState(4);
   const [variants, setVariants] = useState<MemeVariant[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -37,6 +39,7 @@ export default function Page() {
     void fetchHealth()
       .then((result) => {
         setHealth(result);
+        setSampleSize(result.sample.default);
         if (result.authRequired && !getPassword()) setNeedsPassword(true);
       })
       .catch(() => setHealth(null));
@@ -63,6 +66,7 @@ export default function Page() {
         image: image.apiDataUrl,
         prompt: prompt.trim() || undefined,
         count,
+        sampleSize,
       });
       setVariants(result.variants);
       setSelectedId(result.variants[0]?.id ?? null);
@@ -102,8 +106,6 @@ export default function Page() {
     }
   };
 
-  const corpusNote = corpus ?? (health ? { ...health.corpus, used: 0 } : null);
-
   return (
     <div className="app">
       <header className="header">
@@ -113,15 +115,13 @@ export default function Page() {
             Photo in, meme out — written in the account's own voice.
           </p>
         </div>
-        {corpusNote && (
+        {health && (
           <p className="header__badge">
-            {corpusNote.total > 0
-              ? `Styled on ${corpusNote.total} past post${
-                  corpusNote.total === 1 ? "" : "s"
-                }${
-                  corpus && corpus.mode === "sample"
-                    ? ` · ${corpus.used} sampled this run`
-                    : ""
+            {health.corpus.total > 0
+              ? `${health.corpus.total} past post${
+                  health.corpus.total === 1 ? "" : "s"
+                } in the catalogue${
+                  corpus ? ` · ${corpus.used} drawn this run` : ""
                 }`
               : "No back catalogue ingested yet — run npm run ingest"}
           </p>
@@ -148,21 +148,45 @@ export default function Page() {
             />
           </label>
 
-          <div className="field">
-            <span className="field__label">Variants</span>
-            <div className="segmented">
-              {COUNT_CHOICES.map((choice) => (
-                <button
-                  key={choice}
-                  type="button"
-                  className={`segmented__item${
-                    count === choice ? " segmented__item--active" : ""
-                  }`}
-                  onClick={() => setCount(choice)}
-                >
-                  {choice}
-                </button>
-              ))}
+          <div className="controls__pickers">
+            <div className="field">
+              <span className="field__label">Variants</span>
+              <div className="segmented">
+                {COUNT_CHOICES.map((choice) => (
+                  <button
+                    key={choice}
+                    type="button"
+                    className={`segmented__item${
+                      count === choice ? " segmented__item--active" : ""
+                    }`}
+                    onClick={() => setCount(choice)}
+                  >
+                    {choice}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="field">
+              <span className="field__label">
+                Style examples{" "}
+                <span className="field__optional">drawn per run</span>
+              </span>
+              <div className="segmented">
+                {SAMPLE_CHOICES.map((choice) => (
+                  <button
+                    key={choice}
+                    type="button"
+                    className={`segmented__item${
+                      sampleSize === choice ? " segmented__item--active" : ""
+                    }`}
+                    onClick={() => setSampleSize(choice)}
+                    disabled={!health?.corpus.total}
+                  >
+                    {choice}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -204,6 +228,12 @@ export default function Page() {
       {loading && (
         <p className="status">
           Reading the photo against the back catalogue. This takes a few seconds.
+        </p>
+      )}
+
+      {corpus && corpus.sources.length > 0 && (
+        <p className="drawn">
+          Drawn for this run: {corpus.sources.join(", ")}
         </p>
       )}
 
