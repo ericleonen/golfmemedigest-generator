@@ -54,18 +54,17 @@ const VariantSchema = z.object({
   hashtags: z.array(z.string()).describe("4 to 8 hashtags, lowercase, without the leading # character."),
 });
 
-const ResultSchema = z.object({ variants: z.array(VariantSchema) });
+const ResultSchema = VariantSchema;
 
 const INSTRUCTIONS = `You are the staff meme writer and designer for @golfmemedigest, a golf meme account on Instagram.
 
-A human sends you one photo and, sometimes, a few words steering the joke. You write the joke AND lay it out.
+A human sends you one photo and, sometimes, a few words steering the joke. You write ONE meme for it — the joke AND the layout.
 
 HOW TO WRITE
 - Look at the photo first. Name to yourself what is actually in it: the lie, the stance, the face, the cart, the clubhouse, the scoreboard, the weather. Every line must only make sense with THIS photo. A caption that would work over any golf photo is a failed caption.
 - Write from inside the game. Shanks, three-putts, the range swing versus the course swing, provisional balls, slow play, cart girl timing, the guy who buys a new driver every spring, "I'm due", scoring in the 90s and calling it 85, playing the tips, the first tee in front of strangers, winter rules, a lost sleeve of Pro V1s.
 - Punch at the golfer, not at people. Self-own beats put-down. No slurs, no politics, no body-shaming, nothing about a named private individual, nothing sexual.
 - Short. Cut every word not doing work. No emoji in the on-image text.
-- Every variant must be a genuinely different joke, not a rewording.
 
 HOW TO LAY IT OUT
 You control the whole canvas. The canvas is the photo, optionally with a solid band added above it (padTop) and/or below it (padBottom). Every text block is placed by its centre, in fractions of the FULL canvas: x from 0 (left) to 1 (right), y from 0 (top) to 1 (bottom).
@@ -82,10 +81,10 @@ Rules that keep it readable:
 - Keep blocks inside the canvas: y minus half the text height must stay above 0, and below 1 at the bottom. Leave a margin of about 0.04.
 - Do not let blocks overlap each other, and do not cover the face or the subject of the joke.
 - If you add a band, put text in it. Do not add a band and then place everything over the photo.
-- Vary the treatment across the variants you return. Do not send four of the same layout.
+- Pick the treatment this photo and this joke want. Do not default to Impact caps every time.
 
 STYLE REFERENCE
-The images before the new photo are recent posts from this account. They are a small random sample, not the whole account. Read them for the voice, the joke construction, and the visual habits: where text sits, how big it is, which typeface, whether there is a band. Match that house style. Do not copy a past caption word for word.`;
+The images before the new photo are recent posts from this account, drawn at random for this request. They are a tiny sample, not the whole account — a different writer working on the same photo right now is looking at different ones. Read yours for the voice, the joke construction, and the visual habits: where text sits, how big it is, which typeface, whether there is a band. Let the posts you were given pull you toward the kind of joke and the kind of layout they represent. Match the house style; do not copy a past caption word for word.`;
 
 function contentBlocks(
   references: ReturnType<typeof pickReferences>,
@@ -163,7 +162,11 @@ const hex = (value: string, fallback: string) =>
  * not a colour. Clamp rather than reject: a slightly-off number is still a
  * usable meme the human can nudge.
  */
-function normalise(variant: z.infer<typeof VariantSchema>, id: string): MemeSpec {
+function normalise(
+  variant: z.infer<typeof VariantSchema>,
+  id: string,
+  references: string[],
+): MemeSpec {
   const blocks = (variant.blocks ?? [])
     .filter((block) => block.text?.trim())
     .slice(0, 8)
@@ -196,28 +199,21 @@ function normalise(variant: z.infer<typeof VariantSchema>, id: string): MemeSpec
     angle: variant.angle ?? "",
     instagramCaption: variant.instagramCaption ?? "",
     hashtags: (variant.hashtags ?? []).map((tag) => tag.replace(/^#/, "")),
+    references,
   };
 }
 
-export async function generateVariants(opts: {
-  image: string;
-  prompt?: string;
-  count: number;
-}): Promise<GenerateResponse> {
-  const photo = parseDataUrl(opts.image);
+/** One API call: its own random reference draw, one meme back. */
+async function generateOne(
+  photo: { mediaType: SupportedMediaType; data: string },
+  task: string,
+  index: number,
+): Promise<{ variant: MemeSpec; inputTokens: number; outputTokens: number }> {
   const references = pickReferences();
-
-  const steer = opts.prompt?.trim();
-  const task = [
-    `Write and lay out ${opts.count} meme variants for that photo.`,
-    steer
-      ? `The human steered it with: "${steer}". Treat that as the direction for every variant, and still make each one a different joke with a different treatment.`
-      : `The human gave no steer, so find the joke in the photo yourself.`,
-  ].join("\n\n");
 
   const response = await client.beta.messages.parse({
     model: config.model,
-    max_tokens: 8000,
+    max_tokens: 4000,
     betas: ["server-side-fallback-2026-07-01"],
     // If a safety classifier declines the request, the server retries on a
     // comparable model instead of handing back an unusable turn.
@@ -239,21 +235,79 @@ export async function generateVariants(opts: {
     );
   }
 
-  const variants = parsed.variants
-    .slice(0, opts.count)
-    .map((variant, i) => normalise(variant, `${response.id}-${i}`))
-    .filter((variant) => variant.blocks.length > 0);
+  return {
+    variant: normalise(
+      parsed,
+      `${response.id}-${index}`,
+      references.map((reference) => reference.name),
+    ),
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+  };
+}
+
+/**
+ * Fans out one request per variant, in parallel.
+ *
+ * Each call draws its own 2-3 reference memes, which is what makes the variants
+ * genuinely diverge — they are not four rewrites of one idea, they are four
+ * independent attempts primed by different past posts. It also keeps each
+ * response short, which matters against a serverless wall-clock limit.
+ *
+ * A failed call loses its variant rather than the run; only an entirely failed
+ * fan-out throws.
+ */
+export async function generateVariants(opts: {
+  image: string;
+  prompt?: string;
+  count: number;
+}): Promise<GenerateResponse> {
+  const photo = parseDataUrl(opts.image);
+
+  const steer = opts.prompt?.trim();
+  const task = [
+    `Write and lay out ONE meme for that photo.`,
+    steer
+      ? `The human steered it with: "${steer}". Take that as the direction.`
+      : `The human gave no steer, so find the joke in the photo yourself.`,
+    `Several other writers are working on the same photo in parallel, so commit to the angle the reference posts above suggest to you rather than reaching for the most obvious line.`,
+  ].join("\n\n");
+
+  const settled = await Promise.allSettled(
+    Array.from({ length: opts.count }, (_, i) => generateOne(photo, task, i)),
+  );
+
+  const variants: MemeSpec[] = [];
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let firstError: unknown = null;
+
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      inputTokens += result.value.inputTokens;
+      outputTokens += result.value.outputTokens;
+      if (result.value.variant.blocks.length > 0) variants.push(result.value.variant);
+    } else if (!firstError) {
+      firstError = result.reason;
+    }
+  }
 
   if (variants.length === 0) {
+    if (firstError) throw firstError;
     throw new Error("Claude returned no usable variants. Try again.");
   }
 
+  const costUsd =
+    (inputTokens / 1_000_000) * config.inputPricePerMTok +
+    (outputTokens / 1_000_000) * config.outputPricePerMTok;
+
   return {
     variants,
-    referencesUsed: references.length,
     usage: {
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
+      inputTokens,
+      outputTokens,
+      costUsd,
+      requests: settled.length,
     },
   };
 }

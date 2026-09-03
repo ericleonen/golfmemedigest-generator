@@ -28,8 +28,19 @@ export const config = {
   /** Folder of past memes, shown to Claude as the house style. */
   referenceDir: process.env.REFERENCE_DIR ?? "reference",
 
-  /** How many of them to show per run. Each one costs vision tokens. */
-  referenceSampleSize: int("REFERENCE_SAMPLE_SIZE", 4),
+  /**
+   * How many past memes to draw PER VARIANT. Each variant is its own API call
+   * with its own random draw, which is what makes the variants diverge.
+   */
+  referenceSampleSize: int("REFERENCE_SAMPLE_SIZE", 3),
+
+  /**
+   * Rates used to estimate what a run cost, in dollars per million tokens.
+   * Claude Opus 5 is $5 in / $25 out as of writing — override if that changes
+   * or if you switch models.
+   */
+  inputPricePerMTok: Number(process.env.INPUT_PRICE_PER_MTOK ?? 5),
+  outputPricePerMTok: Number(process.env.OUTPUT_PRICE_PER_MTOK ?? 25),
 
   /**
    * Largest accepted upload, in bytes, before base64 overhead. Vercel rejects

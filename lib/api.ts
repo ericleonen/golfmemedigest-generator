@@ -5,30 +5,15 @@ import type {
   HealthResponse,
 } from "@/shared/types";
 
-const PASSWORD_KEY = "golfmemedigest.password";
-
-export function getPassword(): string {
-  try {
-    return localStorage.getItem(PASSWORD_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export function setPassword(password: string): void {
-  try {
-    if (password) localStorage.setItem(PASSWORD_KEY, password);
-    else localStorage.removeItem(PASSWORD_KEY);
-  } catch {
-    // Private browsing with storage blocked; the password just won't persist.
-  }
-}
-
-/** Thrown when the instance is password-protected and ours is wrong or missing. */
+/**
+ * Access is a session cookie set at /login and checked by middleware, so
+ * nothing here carries a password — the browser attaches the cookie itself.
+ */
 export class UnauthorizedError extends Error {}
 
 async function unwrap<T>(response: Response): Promise<T> {
   if (response.ok) return (await response.json()) as T;
+
   let message = `Request failed (${response.status})`;
   try {
     const body = (await response.json()) as ApiError;
@@ -45,16 +30,16 @@ export async function generateMemes(
 ): Promise<GenerateResponse> {
   const response = await fetch("/api/generate", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(getPassword() ? { "x-app-password": getPassword() } : {}),
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   return unwrap<GenerateResponse>(response);
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  const response = await fetch("/api/health");
-  return unwrap<HealthResponse>(response);
+  return unwrap<HealthResponse>(await fetch("/api/health"));
+}
+
+export async function logout(): Promise<void> {
+  await fetch("/api/logout", { method: "POST" });
 }

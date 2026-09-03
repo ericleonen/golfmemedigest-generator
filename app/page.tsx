@@ -6,15 +6,17 @@ import { BlockControls } from "@/components/BlockControls";
 import { Dropzone } from "@/components/Dropzone";
 import { Logo } from "@/components/Logo";
 import { MemeCanvas } from "@/components/MemeCanvas";
-import {
-  UnauthorizedError,
-  fetchHealth,
-  generateMemes,
-  getPassword,
-  setPassword,
-} from "@/lib/api";
+import type { Usage } from "@/shared/types";
+import { UnauthorizedError, fetchHealth, generateMemes, logout } from "@/lib/api";
 import type { LoadedImage } from "@/lib/image";
 import { downloadCanvas, ensureFonts, renderMeme } from "@/lib/render";
+
+/** Sub-cent runs still deserve a real number rather than "$0.00". */
+function formatUsd(amount: number): string {
+  if (amount >= 1) return `$${amount.toFixed(2)}`;
+  if (amount >= 0.01) return `$${amount.toFixed(3)}`;
+  return `$${amount.toFixed(4)}`;
+}
 
 export default function Page() {
   const [image, setImage] = useState<LoadedImage | null>(null);
@@ -28,16 +30,13 @@ export default function Page() {
   const [copied, setCopied] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [fontsReady, setFontsReady] = useState(false);
-  const [password, setPasswordState] = useState(getPassword);
-  const [needsPassword, setNeedsPassword] = useState(false);
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [spent, setSpent] = useState(0);
 
   useEffect(() => {
     void ensureFonts().then(() => setFontsReady(true));
     void fetchHealth()
-      .then((result) => {
-        setHealth(result);
-        if (result.authRequired && !getPassword()) setNeedsPassword(true);
-      })
+      .then(setHealth)
       .catch(() => setHealth(null));
   }, []);
 
@@ -63,11 +62,13 @@ export default function Page() {
       });
       setVariants(result.variants);
       setSelectedId(result.variants[0]?.id ?? null);
+      setUsage(result.usage);
+      setSpent((total) => total + result.usage.costUsd);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
-        setNeedsPassword(true);
-        setPassword("");
-        setPasswordState("");
+        // The session expired or was revoked; middleware will send us to /login.
+        window.location.href = "/login";
+        return;
       }
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -123,10 +124,23 @@ export default function Page() {
     <main className="app">
       <header className="topbar">
         <Logo />
-        <div>
+        <div className="topbar__text">
           <p className="topbar__name">golfmemedigest</p>
           <p className="topbar__sub">meme generator</p>
         </div>
+        {health?.authRequired && (
+          <button
+            type="button"
+            className="linkish"
+            onClick={() => {
+              void logout().then(() => {
+                window.location.href = "/login";
+              });
+            }}
+          >
+            Sign out
+          </button>
+        )}
       </header>
 
       <section className="composer">
@@ -143,20 +157,6 @@ export default function Page() {
             if (event.key === "Enter") void generate();
           }}
         />
-
-        {(needsPassword || (health?.authRequired && password)) && (
-          <input
-            type="password"
-            className="steer"
-            placeholder="Access password"
-            value={password}
-            onChange={(event) => {
-              setPasswordState(event.target.value);
-              setPassword(event.target.value);
-              if (event.target.value) setNeedsPassword(false);
-            }}
-          />
-        )}
 
         <button
           type="button"
@@ -178,6 +178,15 @@ export default function Page() {
           </p>
         )}
         {error && <p className="note note--bad">{error}</p>}
+
+        {usage && (
+          <p className="spend">
+            Last run: {usage.requests} request{usage.requests === 1 ? "" : "s"} ·{" "}
+            {usage.inputTokens.toLocaleString()} in / {usage.outputTokens.toLocaleString()} out ·{" "}
+            <strong>{formatUsd(usage.costUsd)}</strong>
+            {spent > usage.costUsd && <> · {formatUsd(spent)} this session</>}
+          </p>
+        )}
       </section>
 
       {loading && <p className="status">Reading the photo. This takes a few seconds.</p>}
@@ -231,6 +240,23 @@ export default function Page() {
                 )}
 
                 <p className="post__angle">{variant.angle}</p>
+
+                {variant.references.length > 0 && (
+                  <div className="refs">
+                    <span className="refs__label">Styled on</span>
+                    {variant.references.map((name) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={name}
+                        className="refs__thumb"
+                        src={`/api/reference/${encodeURIComponent(name)}`}
+                        alt={name}
+                        title={name}
+                        loading="lazy"
+                      />
+                    ))}
+                  </div>
+                )}
 
                 {isSelected && (
                   <div className="post__edit">

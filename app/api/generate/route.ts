@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { BadImageError, generateVariants } from "@/lib/claude";
 import { config } from "@/lib/config";
-import { checkAccess } from "@/lib/gate";
+import { checkRateLimit } from "@/lib/gate";
 import type { GenerateRequest, GenerateResponse } from "@/shared/types";
 
 export const runtime = "nodejs";
@@ -15,8 +15,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
-  const denied = checkAccess(request);
-  if (denied) return denied;
+  const limited = checkRateLimit(request);
+  if (limited) return limited;
 
   let body: GenerateRequest;
   try {

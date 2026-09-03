@@ -7,9 +7,11 @@ text, download it.
 ## How it works
 
 1. **The browser** downsizes your photo to 1024px and posts it to `/api/generate`.
-2. **The route handler** picks a few of your past memes at random from
-   `reference/`, sends them to Claude as images alongside the new photo, and
-   asks for N variants.
+2. **The route handler fans out one Claude call per variant, in parallel.** Each
+   call draws its own 2-3 past memes at random from `reference/` and sends them
+   as images alongside the new photo. Different references mean the variants are
+   four independent attempts rather than four rewrites of one idea — and each
+   variant shows which posts shaped it.
 3. **Claude returns a layout**, not just words: where each run of text sits, how
    big, which typeface, what colour, whether the canvas gets a solid band above
    or below the photo.
@@ -18,6 +20,9 @@ text, download it.
 
 There is no catalogue file and no ingest step. Put images in `reference/`,
 commit them, done.
+
+Each run reports what it cost — requests, tokens in and out, and dollars — under
+the Generate button, with a running total for the session.
 
 ## Setup
 
@@ -86,6 +91,17 @@ spend your API credits.
 It is a stock Next.js app, so `npm run build && npm start` also runs it on
 Render, Railway, Fly.io or a VPS — which drops Vercel's function time limit and
 lets you run `CLAUDE_EFFORT=high`.
+
+## Access
+
+Set `APP_PASSWORD` and the whole site is gated: every page and every API route.
+Visitors get a login screen once, and a signed, HttpOnly, 30-day cookie keeps
+them signed in — no re-entering it on each visit. Changing `APP_PASSWORD`
+invalidates every outstanding session.
+
+Leave it unset and the gate is off, which is what you want for local
+development. There is also a per-IP hourly cap on generations
+(`RATE_LIMIT_PER_HOUR`, default 30), best-effort on serverless.
 
 ## The logo
 

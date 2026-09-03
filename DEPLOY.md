@@ -55,13 +55,14 @@ what to include and why variety matters more than volume.
    | Name | Value |
    | --- | --- |
    | `ANTHROPIC_API_KEY` | the key from step 1 |
-   | `APP_PASSWORD` | any passphrase you choose |
+   | `APP_PASSWORD` | any passphrase — this gates the entire site |
 
    Optionally add `NEXT_PUBLIC_LOGO=/logo.png` if you have put the real logo
    artwork in `public/`.
 
    **Set `APP_PASSWORD`.** Without it, anyone who finds the URL spends your API
-   credits. You type it into the app once and the browser remembers it.
+   credits. With it, every page and API route sits behind a login screen; you
+   enter it once and a signed 30-day cookie keeps you in.
 4. **Deploy.** First build takes a couple of minutes.
 5. Open the `*.vercel.app` URL and generate a meme before touching DNS.
 
@@ -128,16 +129,21 @@ other branches get their own preview URL.
 **Adding new memes to the voice.** Drop more images in `reference/`, commit,
 push. Nothing to run.
 
-**Watching the spend.** <https://console.anthropic.com> → Usage. Each run sends
-five images — four reference memes plus your photo — so vision tokens are the
-bulk of the input cost. Keeping the reference files small matters.
+**Watching the spend.** The app shows tokens and an estimated dollar cost under
+the Generate button after every run; <https://console.anthropic.com> → Usage is
+the authoritative figure. A run makes one API call per variant, and each call
+sends its own reference images plus your photo, so vision tokens dominate.
+Keeping the reference files near 1080px matters.
 
 **Turning the cost down,** in order of impact — all of them are Vercel
 environment variables, no code change:
 
-1. `REFERENCE_SAMPLE_SIZE=2` — halves the vision tokens per run
-2. `CLAUDE_EFFORT=low`
-3. `VARIANT_COUNT=2` — halves the output tokens
+1. `VARIANT_COUNT=2` — each variant is its own API call, so this halves the run
+2. `REFERENCE_SAMPLE_SIZE=2` — fewer reference images per call
+3. `CLAUDE_EFFORT=low`
+
+The app prints what each run actually cost, so you can measure rather than
+guess. Anthropic's Usage page is the authoritative number.
 
 **Abuse.** `APP_PASSWORD` is the real lock. `RATE_LIMIT_PER_HOUR` (default 30
 per IP) is a speed bump only: the counter lives in one function instance's

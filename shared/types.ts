@@ -59,6 +59,8 @@ export interface MemeSpec {
   angle: string;
   instagramCaption: string;
   hashtags: string[];
+  /** File names of the past memes this variant was styled on. */
+  references: string[];
 }
 
 export interface GenerateRequest {
@@ -72,12 +74,17 @@ export interface GenerateRequest {
 
 export interface GenerateResponse {
   variants: MemeSpec[];
-  /** How many past posts were shown to Claude as style reference this run. */
-  referencesUsed: number;
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-  };
+  usage: Usage;
+}
+
+/** What a run cost. Totalled across the one request made per variant. */
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Estimated, from the per-million rates in lib/config.ts. */
+  costUsd: number;
+  /** How many API calls the run made — one per variant. */
+  requests: number;
 }
 
 export interface HealthResponse {
@@ -87,7 +94,7 @@ export interface HealthResponse {
   authRequired: boolean;
   /** Past memes available in reference/ for the style sample. */
   referenceImages: number;
-  /** How many of those get shown per run. */
+  /** How many of those are drawn per variant. */
   referenceSampleSize: number;
 }
 

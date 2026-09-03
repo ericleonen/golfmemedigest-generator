@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/generate": ["./reference/**/*"],
     "/api/health": ["./reference/**/*"],
+    "/api/reference/[name]": ["./reference/**/*"],
   },
 };
 

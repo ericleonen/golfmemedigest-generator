@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { config } from "./config";
 
 /**
- * Anything public that spends your API credits needs a lid on it. Two cheap
- * ones: an optional shared password, and a per-IP hourly cap.
+ * The password gate lives in middleware.ts and covers the whole site, so all
+ * that is left here is the per-IP cap on generations.
  *
- * The cap is best-effort on serverless — the counter lives in one warm
+ * It is best-effort on serverless: the counter lives in one function
  * instance's memory, so it is a speed bump rather than a guarantee. The
- * password is the real lock.
+ * password and the spend limit on your API key are the real protections.
  */
 
 interface Bucket {
@@ -19,24 +19,11 @@ const buckets = new Map<string, Bucket>();
 
 function clientKey(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");
-  const first = forwarded?.split(",")[0]?.trim();
-  return first || request.headers.get("x-real-ip") || "unknown";
+  return forwarded?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
 }
 
 /** Returns a response to send back, or null when the request may proceed. */
-export function checkAccess(request: Request): NextResponse | null {
-  if (config.appPassword) {
-    if (request.headers.get("x-app-password") !== config.appPassword) {
-      return NextResponse.json(
-        {
-          error: "Wrong password.",
-          detail: "Ask the owner of this instance for the access password.",
-        },
-        { status: 401 },
-      );
-    }
-  }
-
+export function checkRateLimit(request: Request): NextResponse | null {
   if (config.rateLimitPerHour <= 0) return null;
 
   const now = Date.now();
