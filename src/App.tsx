@@ -3,7 +3,13 @@ import type { CorpusUsage, HealthResponse, MemeVariant } from "../shared/types";
 import { Dropzone } from "./components/Dropzone";
 import { MemePreview } from "./components/MemePreview";
 import { VariantEditor } from "./components/VariantEditor";
-import { fetchHealth, generateMemes } from "./lib/api";
+import {
+  UnauthorizedError,
+  fetchHealth,
+  generateMemes,
+  getPassword,
+  setPassword,
+} from "./lib/api";
 import type { LoadedImage } from "./lib/image";
 import { downloadCanvas, ensureFonts, renderMeme } from "./lib/render";
 
@@ -21,11 +27,16 @@ export default function App() {
   const [corpus, setCorpus] = useState<CorpusUsage | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [fontsReady, setFontsReady] = useState(false);
+  const [password, setPasswordState] = useState(getPassword);
+  const [needsPassword, setNeedsPassword] = useState(false);
 
   useEffect(() => {
     void ensureFonts().then(() => setFontsReady(true));
     void fetchHealth()
-      .then(setHealth)
+      .then((result) => {
+        setHealth(result);
+        if (result.authRequired && !getPassword()) setNeedsPassword(true);
+      })
       .catch(() => setHealth(null));
   }, []);
 
@@ -55,6 +66,11 @@ export default function App() {
       setSelectedId(result.variants[0]?.id ?? null);
       setCorpus(result.corpus);
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        setNeedsPassword(true);
+        setPassword("");
+        setPasswordState("");
+      }
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
@@ -147,6 +163,22 @@ export default function App() {
               ))}
             </div>
           </div>
+
+          {(needsPassword || (health?.authRequired && password)) && (
+            <label className="field">
+              <span className="field__label">Access password</span>
+              <input
+                type="password"
+                value={password}
+                placeholder="Set by whoever runs this instance"
+                onChange={(event) => {
+                  setPasswordState(event.target.value);
+                  setPassword(event.target.value);
+                  if (event.target.value) setNeedsPassword(false);
+                }}
+              />
+            </label>
+          )}
 
           <button
             type="button"

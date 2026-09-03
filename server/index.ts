@@ -6,6 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.ts";
 import { corpusStats } from "./corpus.ts";
 import { BadImageError, generateVariants } from "./claude.ts";
+import { rateLimit, requirePassword } from "./gate.ts";
 import type {
   GenerateRequest,
   GenerateResponse,
@@ -14,6 +15,8 @@ import type {
 
 const app = express();
 
+// Trust the single proxy in front of us so rate limiting sees real client IPs.
+app.set("trust proxy", 1);
 app.use(cors());
 // Base64 photos are bulky; allow well over maxImageBytes for the encoding.
 app.use(express.json({ limit: "24mb" }));
@@ -23,12 +26,13 @@ app.get("/api/health", (_req, res) => {
     ok: true,
     model: config.model,
     apiKeyConfigured: config.apiKeyConfigured,
+    authRequired: Boolean(config.appPassword),
     corpus: corpusStats(),
   };
   res.json(body);
 });
 
-app.post("/api/generate", async (req, res) => {
+app.post("/api/generate", requirePassword, rateLimit, async (req, res) => {
   const body = req.body as GenerateRequest;
 
   if (typeof body?.image !== "string" || !body.image) {
@@ -115,7 +119,17 @@ app.listen(config.port, () => {
       stats.total ? ` (${stats.mode} context)` : " — run `npm run ingest`"
     }`,
   );
+  console.log(
+    `  access: ${
+      config.appPassword ? "password required" : "open"
+    }, ${config.rateLimitPerHour || "no"} generations/ip/hour`,
+  );
   if (!config.apiKeyConfigured) {
     console.warn("  warning: ANTHROPIC_API_KEY is not set, /api/generate will fail");
+  }
+  if (!config.appPassword && process.env.NODE_ENV === "production") {
+    console.warn(
+      "  warning: APP_PASSWORD is not set — anyone with the URL can spend your API credits",
+    );
   }
 });

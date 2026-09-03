@@ -65,6 +65,8 @@ export interface HealthResponse {
   ok: boolean;
   model: string;
   apiKeyConfigured: boolean;
+  /** True when APP_PASSWORD is set on the server and callers must supply it. */
+  authRequired: boolean;
   corpus: {
     total: number;
     mode: "full" | "sample" | "empty";

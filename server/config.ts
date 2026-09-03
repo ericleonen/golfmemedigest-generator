@@ -48,6 +48,16 @@ export const config = {
   /** Largest accepted upload, in bytes, before base64 overhead. */
   maxImageBytes: int("MAX_IMAGE_BYTES", 8 * 1024 * 1024),
 
+  /**
+   * Optional shared password for the whole app. Leave unset for a private
+   * instance; set it before putting the app on a public domain, or anyone who
+   * finds the URL spends your API credits.
+   */
+  appPassword: process.env.APP_PASSWORD ?? "",
+
+  /** Generations allowed per IP per hour. 0 disables the cap. */
+  rateLimitPerHour: int("RATE_LIMIT_PER_HOUR", 30),
+
   apiKeyConfigured: Boolean(
     process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN,
   ),

@@ -1,0 +1,22 @@
+# Render blueprint. In the Render dashboard: New → Blueprint → pick this repo.
+# ANTHROPIC_API_KEY and APP_PASSWORD are marked sync:false, so Render prompts
+# for them instead of storing secrets in git.
+services:
+  - type: web
+    name: golfmemedigest-generator
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: CLAUDE_EFFORT
+        value: high
+      - key: RATE_LIMIT_PER_HOUR
+        value: "30"

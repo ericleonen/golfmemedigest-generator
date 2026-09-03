@@ -5,8 +5,8 @@ dist
 .DS_Store
 *.log
 
-# Generated meme corpus + the raw images it is built from.
-data/corpus.json
+# The raw images stay local; data/corpus.json is committed on purpose so a
+# deploy ships with the account's voice instead of an empty catalogue.
 corpus/images/*
 !corpus/images/.gitkeep
 corpus/captions.json

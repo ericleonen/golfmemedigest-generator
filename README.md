@@ -85,6 +85,12 @@ process, so any host that runs Node works. The only secret is
 `ANTHROPIC_API_KEY`, and it never reaches the browser — the API key lives in the
 server process and the browser only ever talks to `/api/*`.
 
+Step-by-step instructions for a custom domain, including DNS, are in
+[`DEPLOY.md`](DEPLOY.md). Two things matter before you put this on a public URL:
+commit `data/corpus.json` so the deploy ships with the account's voice, and set
+`APP_PASSWORD` so strangers cannot spend your API credits. There is also a
+per-IP hourly cap (`RATE_LIMIT_PER_HOUR`, default 30).
+
 ## Configuration
 
 Everything is optional except the API key. See [`.env.example`](.env.example);
