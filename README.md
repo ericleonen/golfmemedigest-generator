@@ -6,8 +6,8 @@ wording, download the PNG.
 
 ## How it works
 
-1. **The browser** downsizes your photo to 1024px and posts it to the local API.
-2. **The API** builds a system prompt out of the account's back catalogue —
+1. **The browser** downsizes your photo to 1024px and posts it to `/api/generate`.
+2. **The route handler** builds a system prompt out of the account's back catalogue —
    every past meme it has ingested, with the text that was on it and a
    description of the photo — and asks Claude for N variants of on-image text.
 3. **The browser** draws the winning text over your *full-resolution* photo on a
@@ -22,11 +22,11 @@ generic meme bot, so it is worth ingesting properly — see
 
 ```bash
 npm install
-cp .env.example .env      # then paste your ANTHROPIC_API_KEY into it
-npm run dev               # web on :5173, api on :8787
+cp .env.example .env.local   # then paste your ANTHROPIC_API_KEY into it
+npm run dev
 ```
 
-Open http://localhost:5173.
+Open http://localhost:3000.
 
 Without a corpus the app still works — it writes from the voice rules in the
 system prompt — but it will not sound like @golfmemedigest until you ingest the
@@ -72,24 +72,26 @@ Claude picks a layout per variant, and you can override it in the editor panel.
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Vite dev server + API server together |
-| `npm run build` | Typecheck and build the SPA into `dist/` |
-| `npm start` | Serve the API *and* the built SPA from `:8787` |
+| `npm run dev` | Next dev server on `:3000` |
+| `npm run build` | Production build (typechecks as part of it) |
+| `npm start` | Serve the production build |
 | `npm run ingest` | Build/refresh `data/corpus.json` from the back catalogue |
-| `npm run typecheck` | Typecheck everything without emitting |
+| `npm run typecheck` | Typecheck without building |
 
 ## Deploying
 
-`npm run build && npm start` serves the built SPA and the API from one Node
-process, so any host that runs Node works. The only secret is
-`ANTHROPIC_API_KEY`, and it never reaches the browser — the API key lives in the
-server process and the browser only ever talks to `/api/*`.
+Built for Vercel — import the repo, set two environment variables, add a domain.
+Step-by-step instructions including DNS are in [`DEPLOY.md`](DEPLOY.md).
+`ANTHROPIC_API_KEY` is read only inside `app/api/*`, so it never reaches a
+browser.
 
-Step-by-step instructions for a custom domain, including DNS, are in
-[`DEPLOY.md`](DEPLOY.md). Two things matter before you put this on a public URL:
-commit `data/corpus.json` so the deploy ships with the account's voice, and set
-`APP_PASSWORD` so strangers cannot spend your API credits. There is also a
-per-IP hourly cap (`RATE_LIMIT_PER_HOUR`, default 30).
+Two things matter before this goes on a public URL: commit `data/corpus.json` so
+the deploy ships with the account's voice, and set `APP_PASSWORD` so strangers
+cannot spend your API credits.
+
+It is a stock Next.js app, so `npm run build && npm start` also runs it on
+Render, Railway, Fly.io or a VPS — which drops Vercel's function time limit and
+lets you run `CLAUDE_EFFORT=high`.
 
 ## Configuration
 
@@ -100,13 +102,20 @@ cheaper generations) and `CORPUS_MAX_CHARS`.
 ## Layout of the repo
 
 ```
-src/            React app
-  lib/render.ts canvas meme renderer (previews and downloads)
-  lib/image.ts  file → full-res bitmap + downscaled copy for the API
-server/         Express API
-  claude.ts     the prompt, the schema, the Claude call
-  corpus.ts     catalogue loading, budgeting and cache-stable sampling
-scripts/        ingest.ts — builds the catalogue from your past memes
-shared/         types used by both sides
-corpus/         where your past memes go (git-ignored)
+app/
+  page.tsx           the whole UI (client component)
+  layout.tsx         self-hosted Anton + Inter via next/font
+  api/generate/      the meme-writing endpoint
+  api/health/        config + catalogue status, used by the UI badge
+lib/
+  render.ts          canvas meme renderer (previews and downloads)
+  image.ts           file → full-res bitmap + downscaled copy for the API
+  claude.ts          the prompt, the schema, the Claude call (server only)
+  corpus.ts          catalogue budgeting and cache-stable sampling
+  gate.ts            password check and per-IP rate limit
+components/          Dropzone, MemePreview, VariantEditor
+scripts/ingest.ts    builds the catalogue from your past memes
+shared/types.ts      types used by both sides
+data/corpus.json     the catalogue — committed, bundled into the function
+corpus/              where your past meme images go (git-ignored)
 ```

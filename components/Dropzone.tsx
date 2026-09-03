@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import type { LoadedImage } from "../lib/image";
-import { loadImageFile } from "../lib/image";
+import type { LoadedImage } from "@/lib/image";
+import { loadImageFile } from "@/lib/image";
 
 interface Props {
   image: LoadedImage | null;

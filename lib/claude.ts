@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import * as z from "zod";
-import { config } from "./config.ts";
-import { buildCorpusContext } from "./corpus.ts";
-import { MEME_LAYOUTS, type GenerateResponse } from "../shared/types.ts";
+import { config } from "./config";
+import { buildCorpusContext } from "./corpus";
+import { MEME_LAYOUTS, type GenerateResponse } from "@/shared/types";
 
 const client = new Anthropic();
 

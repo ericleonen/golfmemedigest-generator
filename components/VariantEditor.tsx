@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { MemeVariant } from "../../shared/types";
-import { MEME_LAYOUTS } from "../../shared/types";
+import type { MemeVariant } from "@/shared/types";
+import { MEME_LAYOUTS } from "@/shared/types";
 
 interface Props {
   variant: MemeVariant;

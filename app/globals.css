@@ -9,6 +9,8 @@
   --accent: #6ddb8f;
   --accent-ink: #06210f;
   --danger: #ff8b7a;
+  --font-impact: var(--font-anton), Impact, sans-serif;
+  --font-body: var(--font-inter), "Helvetica Neue", Arial, sans-serif;
   --warn: #f2c66b;
   color-scheme: dark;
 }
@@ -23,7 +25,7 @@ body {
     radial-gradient(1100px 520px at 12% -12%, #1b2c22 0%, transparent 62%),
     var(--bg);
   color: var(--text);
-  font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -46,7 +48,7 @@ body {
 
 .header__title {
   margin: 0;
-  font-family: Anton, Impact, sans-serif;
+  font-family: var(--font-impact);
   font-size: 34px;
   letter-spacing: 0.02em;
   text-transform: uppercase;

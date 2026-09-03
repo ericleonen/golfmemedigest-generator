@@ -12,15 +12,15 @@
  * to data/corpus.json, keyed by file hash, so re-running only costs money for
  * images that are new.
  */
-import "dotenv/config";
+import "./env"; // must stay first: populates process.env before config reads it
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import * as z from "zod";
-import { config } from "../server/config.ts";
-import type { Corpus, CorpusMeme, MemeLayout } from "../shared/types.ts";
+import { config } from "../lib/config";
+import type { Corpus, CorpusMeme, MemeLayout } from "@/shared/types";
 
 const IMAGE_EXTENSIONS = new Map<string, string>([
   [".jpg", "image/jpeg"],

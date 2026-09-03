@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 function int(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -8,16 +6,16 @@ function int(name: string, fallback: number): number {
 }
 
 export const config = {
-  port: int("PORT", 8787),
-
   /** Anthropic model used for meme writing and for corpus ingest. */
   model: process.env.CLAUDE_MODEL ?? "claude-opus-5",
 
   /**
-   * Reasoning effort. "high" is the API default and the best quality; drop to
-   * "medium" or "low" if you want variants back faster.
+   * Reasoning effort. "high" is the API default and the best quality, but a
+   * Vercel function has a hard wall-clock limit (60s on Hobby), so the default
+   * here is "medium" to stay comfortably inside it. Raise it if your plan
+   * allows a longer maxDuration and you want the extra quality.
    */
-  effort: (process.env.CLAUDE_EFFORT ?? "high") as
+  effort: (process.env.CLAUDE_EFFORT ?? "medium") as
     | "low"
     | "medium"
     | "high"
@@ -42,11 +40,15 @@ export const config = {
    */
   corpusSampleTtlMs: int("CORPUS_SAMPLE_TTL_MS", 4 * 60 * 1000),
 
-  /** Where the ingest script writes and the server reads the corpus. */
+  /** Where the ingest script writes the corpus. Read at build time, not runtime. */
   corpusPath: process.env.CORPUS_PATH ?? "data/corpus.json",
 
-  /** Largest accepted upload, in bytes, before base64 overhead. */
-  maxImageBytes: int("MAX_IMAGE_BYTES", 8 * 1024 * 1024),
+  /**
+   * Largest accepted upload, in bytes, before base64 overhead. Vercel rejects
+   * request bodies over 4.5 MB before our code ever sees them, so this sits
+   * below that to fail with a readable message instead.
+   */
+  maxImageBytes: int("MAX_IMAGE_BYTES", 3 * 1024 * 1024),
 
   /**
    * Optional shared password for the whole app. Leave unset for a private
@@ -55,7 +57,12 @@ export const config = {
    */
   appPassword: process.env.APP_PASSWORD ?? "",
 
-  /** Generations allowed per IP per hour. 0 disables the cap. */
+  /**
+   * Generations allowed per IP per hour. 0 disables the cap. Best-effort only
+   * on serverless: the counter lives in one function instance's memory, so a
+   * determined abuser spread across cold starts gets more than this. Treat
+   * APP_PASSWORD as the real lock and this as a speed bump.
+   */
   rateLimitPerHour: int("RATE_LIMIT_PER_HOUR", 30),
 
   apiKeyConfigured: Boolean(

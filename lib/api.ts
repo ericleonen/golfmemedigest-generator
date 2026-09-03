@@ -3,7 +3,7 @@ import type {
   GenerateRequest,
   GenerateResponse,
   HealthResponse,
-} from "../../shared/types";
+} from "@/shared/types";
 
 const PASSWORD_KEY = "golfmemedigest.password";
 

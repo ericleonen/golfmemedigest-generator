@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import type { MemeVariant } from "../../shared/types";
-import type { RenderSource } from "../lib/render";
-import { renderMeme } from "../lib/render";
+import type { MemeVariant } from "@/shared/types";
+import type { RenderSource } from "@/lib/render";
+import { renderMeme } from "@/lib/render";
 
 interface Props {
   source: RenderSource;

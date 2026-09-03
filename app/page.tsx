@@ -1,21 +1,23 @@
+"use client";
+
 import { useEffect, useMemo, useState } from "react";
-import type { CorpusUsage, HealthResponse, MemeVariant } from "../shared/types";
-import { Dropzone } from "./components/Dropzone";
-import { MemePreview } from "./components/MemePreview";
-import { VariantEditor } from "./components/VariantEditor";
+import type { CorpusUsage, HealthResponse, MemeVariant } from "@/shared/types";
+import { Dropzone } from "@/components/Dropzone";
+import { MemePreview } from "@/components/MemePreview";
+import { VariantEditor } from "@/components/VariantEditor";
 import {
   UnauthorizedError,
   fetchHealth,
   generateMemes,
   getPassword,
   setPassword,
-} from "./lib/api";
-import type { LoadedImage } from "./lib/image";
-import { downloadCanvas, ensureFonts, renderMeme } from "./lib/render";
+} from "@/lib/api";
+import type { LoadedImage } from "@/lib/image";
+import { downloadCanvas, ensureFonts, renderMeme } from "@/lib/render";
 
 const COUNT_CHOICES = [2, 4, 6];
 
-export default function App() {
+export default function Page() {
   const [image, setImage] = useState<LoadedImage | null>(null);
   const [prompt, setPrompt] = useState("");
   const [count, setCount] = useState(4);

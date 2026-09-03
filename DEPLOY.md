@@ -1,38 +1,34 @@
 # Deploying to golfmemedigest.ericleonen.com
 
-The app is one Node process: it serves the built React app *and* the API, so
-there is nothing to split across two hosts. Your Anthropic key lives in that
-process and never reaches a browser.
-
-These steps use **Render**, because it runs a plain Node process, does custom
-domains and TLS for free, and reads the `render.yaml` already in this repo.
-Railway and Fly.io work the same way — see the bottom of this file.
+This is a Next.js app on Vercel. The React app and the two API routes ship as
+one project; `ANTHROPIC_API_KEY` lives in Vercel's environment variables and is
+only ever read inside `app/api/*`, so it never reaches a browser.
 
 ---
 
 ## Step 1 — Get your Anthropic API key
 
-1. Go to <https://console.anthropic.com> → **Settings → API keys** → *Create key*.
+1. <https://console.anthropic.com> → **Settings → API keys** → *Create key*.
 2. Copy it now; the console will not show it again.
 3. Put a spend limit on it: **Settings → Limits**. Start at something you would
    not mind losing, like $20/month.
 
-Sanity check locally before you deploy:
+Check it locally before deploying:
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local     # Next reads .env.local; it is git-ignored
 # paste the key into ANTHROPIC_API_KEY=
 npm install
-npm run dev          # http://localhost:5173
+npm run dev                    # http://localhost:3000
 ```
 
-Generate one meme. If that works locally, it will work deployed.
+Generate one meme. If that works, the deploy will work.
 
 ## Step 2 — Ingest the back catalogue, and commit it
 
-This is the step that makes the output sound like your account instead of a
-generic meme bot. Do it *before* deploying, because the deploy ships whatever
-`data/corpus.json` contains at that commit.
+This is what makes the output sound like your account instead of a generic meme
+bot. Do it *before* deploying: `data/corpus.json` is bundled into the function
+at build time, so the deploy ships whatever that file holds at that commit.
 
 ```bash
 # Put your past memes in corpus/images/, or use an Instagram export:
@@ -40,54 +36,55 @@ npm run ingest -- --instagram-export ~/Downloads/instagram-golfmemedigest
 
 git add data/corpus.json
 git commit -m "Ingest back catalogue"
+git push
 ```
 
-Start with `--limit 25` if you want to see what it costs before committing to
-the whole archive. The images themselves stay out of git; only the extracted
-text catalogue is committed.
+Add `--limit 25` first if you want to see what it costs before committing to the
+whole archive. Only the extracted text catalogue is committed; the images stay
+out of git.
 
-## Step 3 — Deploy to Render
+## Step 3 — Deploy to Vercel
 
-1. <https://dashboard.render.com> → **New → Blueprint**.
-2. Connect GitHub, pick `ericleonen/golfmemedigest-generator`, branch `main`.
-3. Render reads `render.yaml` and prompts for the two secrets:
-   - `ANTHROPIC_API_KEY` — the key from step 1.
-   - `APP_PASSWORD` — pick any passphrase. **Set this.** Without it, anyone who
-     finds the URL spends your API credits. You will type it into the app once
-     and the browser remembers it.
-4. **Create**. First build takes ~2 minutes.
-5. Open the `onrender.com` URL Render gives you and generate a meme. Confirm it
-   works there before touching DNS.
+1. <https://vercel.com/new> → **Import Git Repository** →
+   `ericleonen/golfmemedigest-generator`.
+2. Vercel detects Next.js. Leave the build settings alone.
+3. Expand **Environment Variables** and add two, for all environments
+   (Production, Preview, Development):
 
-The `starter` plan in `render.yaml` is $7/month and always-on. The free plan
-works too — change `plan: starter` to `plan: free` — but it sleeps after 15
-minutes idle and the next request waits ~50 seconds for a cold start.
+   | Name | Value |
+   | --- | --- |
+   | `ANTHROPIC_API_KEY` | the key from step 1 |
+   | `APP_PASSWORD` | any passphrase you choose |
+
+   **Set `APP_PASSWORD`.** Without it, anyone who finds the URL spends your API
+   credits. You type it into the app once and the browser remembers it.
+4. **Deploy.** First build takes a couple of minutes.
+5. Open the `*.vercel.app` URL and generate a meme before touching DNS.
+
+Prefer the CLI? `npx vercel` to link and deploy a preview, `npx vercel --prod`
+to promote, `npx vercel env add ANTHROPIC_API_KEY production` for the secrets.
 
 ## Step 4 — Point your subdomain at it
 
-**In Render:** your service → **Settings → Custom Domains → Add** →
-`golfmemedigest.ericleonen.com`. Render shows you a target hostname like
-`golfmemedigest-generator.onrender.com`.
+**In Vercel:** Project → **Settings → Domains → Add** →
+`golfmemedigest.ericleonen.com`. Vercel shows you the exact record to create.
 
-**At your DNS provider** (wherever `ericleonen.com` is registered), add:
+**At your DNS provider** (wherever `ericleonen.com` is registered):
 
 | Type | Name | Value | TTL |
 | --- | --- | --- | --- |
-| CNAME | `golfmemedigest` | `golfmemedigest-generator.onrender.com` | auto / 300 |
+| CNAME | `golfmemedigest` | `cname.vercel-dns.com` | auto / 300 |
 
-Use the exact target Render displays. Enter the name as just `golfmemedigest`,
-not the full domain — most providers append the rest.
+Use whatever target Vercel displays — it occasionally differs by region. Enter
+the name as just `golfmemedigest`, not the full domain; most providers append
+the rest.
 
-If `ericleonen.com` is on **Cloudflare**, set that record to **DNS only** (grey
-cloud) until Render reports the certificate as issued, then turn the orange
-cloud back on if you want it proxied.
+If `ericleonen.com` is on **Cloudflare**, set the record to **DNS only** (grey
+cloud). Vercel terminates TLS itself, and Cloudflare's proxy in front of it
+causes redirect loops.
 
-Render verifies the record and issues a Let's Encrypt certificate, usually
-within a few minutes. Then:
-
-```
-https://golfmemedigest.ericleonen.com
-```
+Vercel verifies the record and issues a certificate, usually within a few
+minutes. Then: <https://golfmemedigest.ericleonen.com>
 
 ## Step 5 — Check it
 
@@ -101,47 +98,56 @@ go back to step 2.
 
 ---
 
+## The one thing to watch: function duration
+
+Writing four meme variants takes tens of seconds, and a Vercel function has a
+hard wall-clock limit — **60 seconds on Hobby**, higher on Pro. `maxDuration` is
+set to 60 in `app/api/generate/route.ts`.
+
+To stay inside that, `CLAUDE_EFFORT` defaults to `medium` rather than the API's
+own `high`. For meme writing that is a fine trade. If you upgrade to Pro, you can
+raise `maxDuration` in that file and set `CLAUDE_EFFORT=high` in Vercel's
+environment variables for a quality bump.
+
+If you ever see a 504, that is the timeout. Lower `CLAUDE_EFFORT` to `low`, or
+generate 2 variants instead of 4.
+
 ## Keeping it running
 
-**Updating the app.** Push to `main`; Render redeploys automatically.
+**Updating the app.** Push to `main`; Vercel redeploys automatically. Pushes to
+other branches get their own preview URL.
 
 **Adding new memes to the voice.** Re-run `npm run ingest` locally, commit
 `data/corpus.json`, push. Ingest is incremental — it only pays for images it has
 not read before.
 
-**Watching the spend.** <https://console.anthropic.com> → Usage. The back
-catalogue is sent on every generation but is served from Anthropic's prompt
-cache at roughly a tenth of the price, provided requests come in within a few
-minutes of each other. Bursts are much cheaper per meme than one request an
-hour.
+**Watching the spend.** <https://console.anthropic.com> → Usage. The catalogue
+goes out on every generation but is served from Anthropic's prompt cache at
+roughly a tenth of the price when requests land within a few minutes of each
+other. Bursts are much cheaper per meme than one request an hour.
 
-**Turning the cost down** if it is higher than you like, in order of impact:
+**Turning the cost down,** in order of impact — all of them are Vercel
+environment variables, no code change:
 
-1. `CLAUDE_EFFORT=medium` (or `low`) — the biggest lever, and honestly fine for
-   meme writing. Set it in Render → Environment.
-2. `CORPUS_MAX_CHARS=200000` — sends half as much catalogue per request.
-3. `VARIANT_COUNT=2` — halves the output tokens.
+1. `CLAUDE_EFFORT=low`
+2. `CORPUS_MAX_CHARS=200000` — sends half as much catalogue per request
+3. `VARIANT_COUNT=2` — halves the output tokens
 
-**If someone finds the URL and hammers it:** the per-IP cap
-(`RATE_LIMIT_PER_HOUR`, default 30) blunts it, and `APP_PASSWORD` stops it. If
-you ever need to shut it off instantly, delete the `ANTHROPIC_API_KEY` env var
-in Render — the app stays up and returns a clean error.
+**Abuse.** `APP_PASSWORD` is the real lock. `RATE_LIMIT_PER_HOUR` (default 30
+per IP) is a speed bump only: the counter lives in one function instance's
+memory, so it does not survive cold starts or span instances. If you need a hard
+cap, the spend limit on the API key is the backstop that actually holds. To kill
+it instantly, delete `ANTHROPIC_API_KEY` in Vercel → Settings → Environment
+Variables and redeploy; the site stays up and returns a clean error.
 
-**Rotating the key:** create a new key in the Anthropic console, update it in
-Render → Environment (which triggers a redeploy), then delete the old key.
+**Rotating the key.** Create a new key in the Anthropic console, update it in
+Vercel, redeploy, then delete the old key.
 
 ---
 
-## Other hosts
+## Running it somewhere other than Vercel
 
-Same shape everywhere: build with `npm ci && npm run build`, start with
-`npm start`, set `ANTHROPIC_API_KEY` and `APP_PASSWORD`, bind `$PORT` (already
-handled), point a CNAME at whatever hostname they give you.
-
-- **Railway** — `railway up`, then Settings → Networking → Custom Domain.
-- **Fly.io** — `fly launch` (Node detected), `fly secrets set ANTHROPIC_API_KEY=... APP_PASSWORD=...`, `fly certs add golfmemedigest.ericleonen.com`.
-
-**Vercel and Netlify need work first.** Both want serverless functions rather
-than a long-running Node process, so `server/index.ts` would have to be split
-into `/api` handlers. Doable, not free. Only worth it if you are already living
-in that dashboard.
+It is a stock Next.js app: `npm run build && npm start` serves everything from
+one Node process on `$PORT`. Render, Railway, Fly.io and a plain VPS all work
+with those two commands plus the same two environment variables. Self-hosting
+also drops the function time limit, so you can run `CLAUDE_EFFORT=high`.

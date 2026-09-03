@@ -1,12 +1,27 @@
-import type { MemeVariant } from "../../shared/types";
+import type { MemeVariant } from "@/shared/types";
 
 /**
  * Canvas meme renderer. The same function draws the on-screen previews and the
  * file that gets downloaded, so what you pick is exactly what you post.
  */
 
-const IMPACT_STACK = `Anton, Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif`;
-const SANS_STACK = `Inter, "Helvetica Neue", Arial, sans-serif`;
+const IMPACT_FALLBACK = `Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif`;
+const SANS_FALLBACK = `"Helvetica Neue", Arial, sans-serif`;
+
+/**
+ * next/font generates a hashed family name and exposes it as a CSS variable, so
+ * the canvas has to read the variable rather than hardcode "Anton" / "Inter".
+ */
+function stack(variable: string, fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  const family = getComputedStyle(document.documentElement)
+    .getPropertyValue(variable)
+    .trim();
+  return family ? `${family}, ${fallback}` : fallback;
+}
+
+const impactStack = () => stack("--font-anton", IMPACT_FALLBACK);
+const sansStack = () => stack("--font-inter", SANS_FALLBACK);
 
 const LINE_HEIGHT = 1.06;
 const CAPTION_LINE_HEIGHT = 1.3;
@@ -22,11 +37,11 @@ export interface RenderSource {
  * browser silently substitutes a fallback and the layout shifts afterwards.
  */
 export async function ensureFonts(): Promise<void> {
-  if (!("fonts" in document)) return;
+  if (typeof document === "undefined" || !("fonts" in document)) return;
   try {
     await Promise.all([
-      document.fonts.load("400 100px Anton"),
-      document.fonts.load("700 100px Inter"),
+      document.fonts.load(`400 100px ${impactStack()}`),
+      document.fonts.load(`700 100px ${sansStack()}`),
     ]);
     await document.fonts.ready;
   } catch {
@@ -99,7 +114,7 @@ function drawImpactLines(
   centerX: number,
   top: number,
 ): void {
-  ctx.font = `400 ${size}px ${IMPACT_STACK}`;
+  ctx.font = `400 ${size}px ${impactStack()}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.lineJoin = "round";
@@ -153,7 +168,7 @@ export function renderMeme(
 
   if (variant.layout === "caption-bar") {
     const captionSize = Math.round(width * 0.058);
-    measureCtx.font = `700 ${captionSize}px ${SANS_STACK}`;
+    measureCtx.font = `700 ${captionSize}px ${sansStack()}`;
     const lines = wrap(measureCtx, variant.captionText || " ", textWidth);
     const barHeight = Math.round(
       lines.length * captionSize * CAPTION_LINE_HEIGHT + margin * 2,
@@ -166,7 +181,7 @@ export function renderMeme(
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, barHeight);
     ctx.fillStyle = "#111111";
-    ctx.font = `700 ${captionSize}px ${SANS_STACK}`;
+    ctx.font = `700 ${captionSize}px ${sansStack()}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     lines.forEach((line, i) => {
@@ -186,7 +201,7 @@ export function renderMeme(
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(source.image, 0, 0, width, imageHeight);
 
-  const impactFont = (size: number) => `400 ${size}px ${IMPACT_STACK}`;
+  const impactFont = (size: number) => `400 ${size}px ${impactStack()}`;
   const startSize = Math.round(width * 0.115);
   const minSize = Math.round(width * 0.042);
 

@@ -1,37 +1,19 @@
-import fs from "node:fs";
-import path from "node:path";
-import { config } from "./config.ts";
-import type { Corpus, CorpusMeme, CorpusUsage } from "../shared/types.ts";
-
-let cached: { corpus: Corpus; mtimeMs: number } | null = null;
+import corpusData from "@/data/corpus.json";
+import { config } from "./config";
+import type { Corpus, CorpusMeme, CorpusUsage } from "@/shared/types";
 
 /**
- * Reads data/corpus.json, re-reading only when the file changes on disk so a
- * fresh `npm run ingest` is picked up without a server restart.
+ * The catalogue is imported, not read from disk at request time: a serverless
+ * function has no reliable working directory, and bundling the JSON means the
+ * deployed function always carries the voice it was built with. Re-run
+ * `npm run ingest`, commit data/corpus.json, and the next deploy picks it up.
  */
 export function loadCorpus(): Corpus {
-  const file = path.resolve(config.corpusPath);
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(file);
-  } catch {
-    return { generatedAt: "", memes: [] };
-  }
-
-  if (cached && cached.mtimeMs === stat.mtimeMs) return cached.corpus;
-
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Corpus;
-    const corpus: Corpus = {
-      generatedAt: parsed.generatedAt ?? "",
-      memes: Array.isArray(parsed.memes) ? parsed.memes : [],
-    };
-    cached = { corpus, mtimeMs: stat.mtimeMs };
-    return corpus;
-  } catch (err) {
-    console.error(`Could not parse ${config.corpusPath}:`, err);
-    return { generatedAt: "", memes: [] };
-  }
+  const parsed = corpusData as Corpus;
+  return {
+    generatedAt: parsed.generatedAt ?? "",
+    memes: Array.isArray(parsed.memes) ? parsed.memes : [],
+  };
 }
 
 /** One past meme, rendered as compact text for the style context block. */
