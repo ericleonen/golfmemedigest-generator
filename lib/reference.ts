@@ -46,8 +46,35 @@ export interface ReferenceImage {
   data?: string;
 }
 
+/**
+ * The Blob SDK authenticates two ways, and a Vercel project connected through
+ * the dashboard now gets the second one:
+ *
+ *  - BLOB_READ_WRITE_TOKEN, the classic store token; or
+ *  - OIDC — a VERCEL_OIDC_TOKEN minted per deployment, paired with
+ *    BLOB_STORE_ID to say which store it is for.
+ *
+ * Checking only for the read/write token made a correctly connected production
+ * deployment look unconfigured, and the app fell back to the empty local
+ * folder without saying so. Accept either.
+ */
 export function blobConfigured(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  return Boolean(
+    process.env.BLOB_READ_WRITE_TOKEN ||
+      process.env.BLOB_STORE_ID ||
+      process.env.VERCEL_OIDC_TOKEN,
+  );
+}
+
+/**
+ * Why the last Blob call failed, surfaced through /api/health. Falling back to
+ * an empty local folder in silence is what made this hard to diagnose the
+ * first time; a stored reason means the next failure explains itself.
+ */
+let lastBlobError: string | null = null;
+
+export function blobError(): string | null {
+  return lastBlobError;
 }
 
 // Listing every blob on every request would be a wasted round trip for data
@@ -73,6 +100,7 @@ async function listBlobs(): Promise<{ name: string; url: string }[]> {
   } while (cursor);
 
   cache = { at: Date.now(), blobs };
+  lastBlobError = null;
   return blobs;
 }
 
@@ -96,6 +124,7 @@ export async function countReferences(): Promise<number> {
     try {
       return (await listBlobs()).length;
     } catch (err) {
+      lastBlobError = err instanceof Error ? err.message : String(err);
       console.error("Could not list the Blob store:", err);
       return 0;
     }
@@ -146,6 +175,7 @@ export async function pickReferences(
         samplingWeight(weights.scores[blob.name]),
       ).map((blob) => ({ name: blob.name, url: blob.url, thumbnailUrl: blob.url }));
     } catch (err) {
+      lastBlobError = err instanceof Error ? err.message : String(err);
       console.error("Could not list the Blob store, falling back to local:", err);
     }
   }

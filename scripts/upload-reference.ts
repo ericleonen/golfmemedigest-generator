@@ -237,11 +237,18 @@ async function main() {
   if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
     fail(`Not a folder: ${folder}`);
   }
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  // The SDK also accepts OIDC (VERCEL_OIDC_TOKEN + BLOB_STORE_ID), which is
+  // what a dashboard-connected project gets; locally it is normally the token.
+  if (
+    !process.env.BLOB_READ_WRITE_TOKEN &&
+    !(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID)
+  ) {
     fail(
-      "BLOB_READ_WRITE_TOKEN is not set.\n" +
+      "No Blob credentials found.\n" +
         "  Create a Blob store in the Vercel dashboard (Storage → Create → Blob),\n" +
-        "  then run `npx vercel env pull .env.local` to fetch the token.",
+        "  then run `npx vercel env pull .env.local`.\n" +
+        "  If that pulled BLOB_STORE_ID but no BLOB_READ_WRITE_TOKEN, copy the\n" +
+        "  read/write token from the store's page in the dashboard.",
     );
   }
 

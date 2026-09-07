@@ -113,10 +113,19 @@ curl https://golfmemedigest.ericleonen.com/api/health
 You want `"apiKeyConfigured": true`, `"authRequired": true`, and a
 `referenceImages` count matching what you uploaded.
 
-`blobConfigured` should also be `true`. **If it is `false`, or
-`referenceImages` is 0**, the deployment cannot see the Blob store — check that
-the store is connected to the project in Vercel → Storage, which is what injects
-`BLOB_READ_WRITE_TOKEN`, and that you have redeployed since connecting it.
+`blobConfigured` should be `true` and `referenceSource` should be `"blob"`.
+
+**If `referenceImages` is 0**, read `referenceError` in the same response — it
+carries the reason rather than failing silently. The two credential shapes are:
+
+- `BLOB_READ_WRITE_TOKEN` — the classic store token.
+- `BLOB_STORE_ID` plus a per-deployment `VERCEL_OIDC_TOKEN` — what a project
+  connected through the dashboard gets.
+
+Either works. If `referenceError` says *no blob credentials found* while
+`BLOB_STORE_ID` is present, the deployment is missing the OIDC token: copy the
+read/write token from the store's page in Vercel → Storage and add it as
+`BLOB_READ_WRITE_TOKEN`, then redeploy.
 
 The like/dislike buttons only appear when `blobConfigured` is true, since the
 scores are stored there.

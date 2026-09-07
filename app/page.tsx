@@ -219,7 +219,11 @@ export default function Page() {
         )}
         {health && health.apiKeyConfigured && health.referenceImages === 0 && (
           <p className="note">
-            No style reference yet — add past memes to <code>reference/</code> and redeploy.
+            {health.referenceError
+              ? `Could not read the reference store: ${health.referenceError}`
+              : health.blobConfigured
+                ? "The Blob store is connected but empty — run npm run upload."
+                : "No style reference yet. Upload past memes with npm run upload, or drop them in reference/."}
           </p>
         )}
         {error && <p className="note note--bad">{error}</p>}

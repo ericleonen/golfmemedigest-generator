@@ -105,6 +105,10 @@ export interface HealthResponse {
   referenceSampleSize: number;
   /** Whether the Blob store is wired up: the draw is only weighted if it is. */
   blobConfigured: boolean;
+  /** Where the references are actually coming from right now. */
+  referenceSource: "blob" | "local" | "none";
+  /** Why Blob failed, when it did. Null when everything is fine. */
+  referenceError: string | null;
   /** Votes recorded so far. */
   feedbackVotes: number;
 }

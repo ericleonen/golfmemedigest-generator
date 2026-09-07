@@ -79,10 +79,13 @@ npm run dev
 ```
 
 In production, connect the Blob store to the project (Vercel → Storage → your
-store → Connect Project). Vercel then injects `BLOB_READ_WRITE_TOKEN` into every
-deployment; redeploy once so it picks it up. Confirm with `/api/health`:
-`blobConfigured` should be `true` and `referenceImages` should match your upload
-count.
+store → Connect Project) and redeploy once. Vercel supplies credentials in one
+of two shapes and the app accepts either: the classic `BLOB_READ_WRITE_TOKEN`,
+or `BLOB_STORE_ID` plus a per-deployment `VERCEL_OIDC_TOKEN`.
+
+Confirm with `/api/health`: `blobConfigured` should be `true`,
+`referenceSource` `"blob"`, and `referenceImages` should match your upload
+count. If it is 0, `referenceError` in the same response says why.
 
 New uploads are picked up within about five minutes with no redeploy — the app
 lists the store at request time and caches that listing.
