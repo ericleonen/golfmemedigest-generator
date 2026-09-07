@@ -274,7 +274,7 @@ export default function Page() {
         {selected && selected.references.length > 0 && (
           <section className="sidepanel">
             <h2 className="sidepanel__title">
-              Styled on · {STYLE_LABELS[selected.style]}
+              Learned from · {STYLE_LABELS[selected.style]}
             </h2>
             <ReferenceStrip references={selected.references} expanded static />
           </section>

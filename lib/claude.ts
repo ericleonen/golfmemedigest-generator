@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import * as z from "zod";
 import { config } from "./config";
-import { pickReferences, type ReferenceImage } from "./reference";
+import { pickReferenceSets, type ReferenceImage } from "./reference";
 import {
   FONT_KEYS,
   MEME_STYLES,
@@ -88,8 +88,22 @@ Rules that keep it readable:
 - Do not let blocks overlap each other, and do not cover the face or the subject of the joke.
 - If you add a band, put text in it. Do not add a band and then place everything over the photo.
 
-STYLE REFERENCE
-The images before the new photo are recent posts from this account, drawn at random for this request. They are a tiny sample, not the whole account — a different writer working on the same photo right now is looking at different ones. Read yours for the voice, the joke construction, and the visual habits: where text sits, how big it is, which typeface, whether there is a band. Let the posts you were given pull you toward the kind of joke and the kind of layout they represent. Match the house style; do not copy a past caption word for word.`;
+THE THREE POSTS ABOVE
+Three posts from this account are shown before the new photo. They are not a style guide — the format you are building is specified separately below, and their layout is irrelevant to you. They are there because they landed.
+
+Before you write a single word, work out for yourself why each of the three is funny. Not what it is about — the mechanism. The kind of thing you are looking for:
+- it names something every golfer has done and nobody admits to
+- it sets up a lie and lets the picture contradict it in the same frame
+- it treats a trivial indignity with completely disproportionate gravity
+- it is specific where a lesser version would be general — a number, a club, a hole
+- it is the second half of a thought whose first half everyone already knows
+- the caption is calm and the image is not, or the other way round
+
+Say the mechanism to yourself in one sentence for each of the three. Then look at the new photo and ask which of those three mechanisms it can actually carry — the photo decides, not your preference. Build your meme on that mechanism.
+
+What you are copying is the reason it is funny. Not the words, not the subject, not the layout. If someone laughed at the post you learned from and then laughed at yours, it should be for the same underlying reason.`;
+
+
 
 
 /** What each house format actually means, in layout terms Claude can execute. */
@@ -156,9 +170,9 @@ function contentBlocks(
   if (references.length > 0) {
     blocks.push({
       type: "text",
-      text: `Here ${references.length === 1 ? "is" : "are"} ${references.length} recent post${
-        references.length === 1 ? "" : "s"
-      } from @golfmemedigest, for style:`,
+      text: `${
+        references.length === 1 ? "This is one post" : `These are ${references.length} posts`
+      } from @golfmemedigest that worked. Study why each one is funny:`,
     });
     for (const reference of references) {
       blocks.push({
@@ -282,8 +296,8 @@ async function generateOne(
   task: string,
   index: number,
   style: MemeStyle,
+  references: ReferenceImage[],
 ): Promise<{ variant: MemeSpec; inputTokens: number; outputTokens: number }> {
-  const references = await pickReferences();
 
   const response = await client.beta.messages.parse({
     model: config.model,
@@ -354,12 +368,15 @@ export async function generateVariants(opts: {
     steer
       ? `The human steered it with: "${steer}". Take that as the direction.`
       : `The human gave no steer, so find the joke in the photo yourself.`,
-    `Several other writers are working on the same photo in parallel, so commit to the angle the reference posts above suggest to you rather than reaching for the most obvious line.`,
+    `Several other writers are working on the same photo in parallel, each shown three different posts. Commit to the mechanism your three point you at rather than reaching for the most obvious line.`,
   ].join("\n\n");
+
+  // Drawn together so every variant gets its own three: N variants, 3N posts.
+  const referenceSets = await pickReferenceSets(opts.count);
 
   const settled = await Promise.allSettled(
     Array.from({ length: opts.count }, (_, i) =>
-      generateOne(photo, task, i, style),
+      generateOne(photo, task, i, style, referenceSets[i] ?? []),
     ),
   );
 

@@ -165,9 +165,7 @@ function weightedSample<T>(
     .map((entry) => entry.item);
 }
 
-export async function pickReferences(
-  count = config.referenceSampleSize,
-): Promise<ReferenceImage[]> {
+async function pickFlat(count: number): Promise<ReferenceImage[]> {
   if (blobConfigured()) {
     try {
       const [blobs, weights] = await Promise.all([listBlobs(), loadWeights()]);
@@ -201,6 +199,48 @@ export async function pickReferences(
     }
   }
   return picked;
+}
+
+/**
+ * One set of references per variant, all of them distinct.
+ *
+ * Drawing per variant independently meant the same meme could turn up behind
+ * two variants, which wastes the whole point of giving each writer different
+ * material. This draws `variants x perVariant` in a single weighted sample
+ * without replacement and then deals them out, so N variants see 3N different
+ * posts.
+ *
+ * A store smaller than that cannot supply everyone — the deal is topped up with
+ * a second draw in that case, so references repeat across variants but never
+ * inside one.
+ */
+export async function pickReferenceSets(
+  variants: number,
+  perVariant = config.referenceSampleSize,
+): Promise<ReferenceImage[][]> {
+  const wanted = variants * perVariant;
+  const pool = await pickFlat(wanted);
+
+  // Shuffle before dealing. The pool comes back ordered by its sampling key, so
+  // dealing it straight would hand variant 0 the top-keyed pick every time.
+  const sets: ReferenceImage[][] = Array.from({ length: variants }, () => []);
+  shuffle(pool).forEach((reference, i) => sets[i % variants]!.push(reference));
+
+  const short = sets.filter((set) => set.length < perVariant);
+  if (short.length > 0 && pool.length > 0) {
+    for (const set of short) {
+      const taken = new Set(set.map((reference) => reference.name));
+      // Cycle the pool rather than redrawing: a small store has nothing else.
+      for (const reference of pool) {
+        if (set.length >= perVariant) break;
+        if (taken.has(reference.name)) continue;
+        set.push(reference);
+        taken.add(reference.name);
+      }
+    }
+  }
+
+  return sets;
 }
 
 /** Local-file listing, used by the route that serves them in local mode. */

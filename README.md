@@ -8,14 +8,16 @@ text, download it.
 
 1. **The browser** downsizes your photo to 1024px and posts it to `/api/generate`.
 2. **The route handler fans out one Claude call per variant, in parallel.** Each
-   call draws its own 2-3 past memes at random from your Vercel Blob store and
-   passes them to Claude by URL. Different references mean the variants are four
-   independent attempts rather than four rewrites of one idea — and each variant
-   shows which posts shaped it.
-3. **Claude returns a layout**, not just words: where each run of text sits, how
+   call gets its own **three** past memes from your Vercel Blob store, passed to
+   Claude by URL. The draw happens once and is dealt out, so N variants see 3N
+   *different* posts — no meme appears behind two variants.
+3. **Claude works out why those three are funny** — the mechanism, not the topic
+   — and builds the new meme on the same mechanism. The three are not a style
+   guide; the format is chosen separately by you.
+4. **Claude returns a layout**, not just words: where each run of text sits, how
    big, which typeface, what colour, whether the canvas gets a solid band above
    or below the photo.
-4. **The browser draws it** on a canvas over your full-resolution photo. Drag any
+5. **The browser draws it** on a canvas over your full-resolution photo. Drag any
    text to move it, change the words, nudge the size, then download.
 
 There is no catalogue file and no ingest step. Put images in `reference/`,
