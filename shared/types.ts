@@ -59,8 +59,15 @@ export interface MemeSpec {
   angle: string;
   instagramCaption: string;
   hashtags: string[];
-  /** File names of the past memes this variant was styled on. */
-  references: string[];
+  /** The past memes this variant was styled on. */
+  references: ReferenceRef[];
+}
+
+/** A reference meme, as far as the browser needs to know about it. */
+export interface ReferenceRef {
+  name: string;
+  /** Where to load the thumbnail: a Blob URL, or the local-mode API route. */
+  url: string;
 }
 
 export interface GenerateRequest {

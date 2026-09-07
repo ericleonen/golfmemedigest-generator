@@ -24,25 +24,29 @@ npm run dev                    # http://localhost:3000
 
 Generate one meme. If that works, the deploy will work.
 
-## Step 2 — Add your style reference, and commit it
+## Step 2 — Upload your style reference to Vercel Blob
 
 This is what makes the output look and sound like your account instead of a
-generic meme bot. Do it *before* deploying: the `reference/` folder is bundled
-into the serverless function at build time, so the deploy ships whatever is
-committed.
+generic meme bot.
+
+1. In the Vercel dashboard: **Storage → Create Database → Blob**, and connect it
+   to this project. Vercel then injects `BLOB_READ_WRITE_TOKEN` automatically.
+2. Locally:
 
 ```bash
-# 10-40 of your best past memes, resized to ~1080px on the long edge
-cp ~/Desktop/best-memes/*.jpg reference/
-
-git add reference/
-git commit -m "Add style reference"
-git push
+npx vercel link                      # once, to associate the folder with the project
+npx vercel env pull .env.local       # fetches BLOB_READ_WRITE_TOKEN
+npm run upload -- ~/Pictures/golfmemedigest --dry-run
+npm run upload -- ~/Pictures/golfmemedigest
 ```
 
-No catalogue, no ingest script — Claude looks at the actual images. Four are
-picked at random per run. See [`reference/README.md`](reference/README.md) for
-what to include and why variety matters more than volume.
+Images only — videos and sub-folders are skipped. Each is resized to 1080px on
+the long edge before upload. Re-running is a no-op for anything already there,
+so adding memes later just means running it again; new uploads are live within
+about five minutes with no redeploy.
+
+Nothing is committed to git for this, and the images are not bundled into the
+function — Claude reads them from their Blob URLs.
 
 ## Step 3 — Deploy to Vercel
 
@@ -98,12 +102,11 @@ curl https://golfmemedigest.ericleonen.com/api/health
 ```
 
 You want `"apiKeyConfigured": true`, `"authRequired": true`, and a
-`referenceImages` count matching what you committed.
+`referenceImages` count matching what you uploaded.
 
-**If `referenceImages` is 0 but you committed images**, the folder did not make
-it into the function bundle. `next.config.ts` names it explicitly under
-`outputFileTracingIncludes` for exactly this reason — check that entry still
-matches `REFERENCE_DIR`.
+**If `referenceImages` is 0**, the deployment cannot see the Blob store. Check
+that the store is connected to the project in Vercel → Storage, which is what
+injects `BLOB_READ_WRITE_TOKEN` into the deployment.
 
 ---
 
@@ -126,8 +129,9 @@ generate 2 variants instead of 4.
 **Updating the app.** Push to `main`; Vercel redeploys automatically. Pushes to
 other branches get their own preview URL.
 
-**Adding new memes to the voice.** Drop more images in `reference/`, commit,
-push. Nothing to run.
+**Adding new memes to the voice.** Drop them in your local folder and re-run
+`npm run upload -- <folder>`. Already-uploaded files are skipped. No commit, no
+redeploy — the app re-lists the store every few minutes.
 
 **Watching the spend.** The app shows tokens and an estimated dollar cost under
 the Generate button after every run; <https://console.anthropic.com> → Usage is

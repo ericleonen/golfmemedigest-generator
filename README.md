@@ -8,10 +8,10 @@ text, download it.
 
 1. **The browser** downsizes your photo to 1024px and posts it to `/api/generate`.
 2. **The route handler fans out one Claude call per variant, in parallel.** Each
-   call draws its own 2-3 past memes at random from `reference/` and sends them
-   as images alongside the new photo. Different references mean the variants are
-   four independent attempts rather than four rewrites of one idea — and each
-   variant shows which posts shaped it.
+   call draws its own 2-3 past memes at random from your Vercel Blob store and
+   passes them to Claude by URL. Different references mean the variants are four
+   independent attempts rather than four rewrites of one idea — and each variant
+   shows which posts shaped it.
 3. **Claude returns a layout**, not just words: where each run of text sits, how
    big, which typeface, what colour, whether the canvas gets a solid band above
    or below the photo.
@@ -34,9 +34,44 @@ npm run dev
 
 Open http://localhost:3000.
 
-Then put 10-40 of your best past memes in [`reference/`](reference/README.md)
-and commit them. Without them the app still works — it falls back to the voice
-rules in `lib/claude.ts` — but it will not sound or look like your account.
+Then upload your past memes (see below). Without them the app still works — it
+falls back to the voice rules in `lib/claude.ts` — but it will not sound or look
+like your account.
+
+## The style reference
+
+Your past memes live in a Vercel Blob store. Upload a folder of them once:
+
+```bash
+npx vercel env pull .env.local          # fetches BLOB_READ_WRITE_TOKEN
+npm run upload -- ~/Pictures/golfmemedigest --dry-run
+npm run upload -- ~/Pictures/golfmemedigest
+```
+
+The script walks the folder (one level — sub-folders are reported, not
+descended), takes JPEG/PNG/WebP only, skips videos and everything else, resizes
+each to 1080px on the long edge, and uploads with a progress bar. Re-running is
+a cheap no-op: it lists the store first and skips anything already there, so
+adding new memes later just means running it again.
+
+| Flag | Effect |
+| --- | --- |
+| `--dry-run` | List what would be uploaded, touch nothing |
+| `--limit 100` | Only upload the first 100 new files |
+| `--concurrency 12` | Parallel uploads, default 8 |
+| `--no-resize` | Upload the originals untouched |
+| `--force` | Re-upload files already in the store |
+
+New uploads are picked up within about five minutes with no redeploy — the app
+lists the store at request time and caches that listing.
+
+Blob URLs are public but unguessable, which is what lets Claude read them
+directly and the browser show the "styled on" thumbnails. For memes you already
+posted publicly that is fine; do not put anything private in that store.
+
+If `BLOB_READ_WRITE_TOKEN` is not set, the app falls back to reading the local
+[`reference/`](reference/README.md) folder, so a fresh clone runs without any
+cloud setup.
 
 ## The layout system
 
@@ -76,6 +111,7 @@ upscaling the preview.
 | `npm run build` | Production build (typechecks as part of it) |
 | `npm start` | Serve the production build |
 | `npm run typecheck` | Typecheck without building |
+| `npm run upload -- <folder>` | Upload past memes to Vercel Blob |
 
 ## Deploying
 
@@ -119,11 +155,14 @@ app/
   api/health/        config + reference count, used by the UI
 lib/
   claude.ts          the prompt, the layout schema, the Claude call
-  reference.ts       picks past memes to send as style
+  reference.ts       draws past memes from Blob (or the local folder)
   render.ts          canvas renderer, bounds clamping, hit-testing
   image.ts           file → full-res bitmap + downscaled copy for the API
   gate.ts            password check and per-IP rate limit
 components/          Logo, Dropzone, MemeCanvas, BlockControls
-reference/           your past memes — committed, sent to Claude as images
+scripts/
+  upload-reference.ts  uploads a local folder of memes to Vercel Blob
+  progress.ts          the terminal progress bar
+reference/           local fallback for the style images
 shared/types.ts      the meme spec, shared by both sides
 ```

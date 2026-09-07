@@ -244,14 +244,14 @@ export default function Page() {
                 {variant.references.length > 0 && (
                   <div className="refs">
                     <span className="refs__label">Styled on</span>
-                    {variant.references.map((name) => (
+                    {variant.references.map((reference) => (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        key={name}
+                        key={reference.name}
                         className="refs__thumb"
-                        src={`/api/reference/${encodeURIComponent(name)}`}
-                        alt={name}
-                        title={name}
+                        src={reference.url}
+                        alt={reference.name}
+                        title={reference.name}
                         loading="lazy"
                       />
                     ))}

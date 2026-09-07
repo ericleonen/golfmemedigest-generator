@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { listReferenceFiles } from "@/lib/reference";
+import { listLocalReferenceFiles } from "@/lib/reference";
 
 export const runtime = "nodejs";
 
@@ -13,7 +13,9 @@ const MEDIA_TYPES: Record<string, string> = {
 };
 
 /**
- * Serves a reference meme so the UI can show which ones shaped each variant.
+ * Serves a local reference meme so the UI can show which ones shaped each
+ * variant. Only used when there is no Blob store — Blob references carry their
+ * own public URL and the browser loads those directly.
  * The requested name is matched against the real listing rather than joined
  * onto a path, so "../../.env" cannot resolve to anything.
  */
@@ -22,7 +24,7 @@ export async function GET(
   context: { params: Promise<{ name: string }> },
 ) {
   const { name } = await context.params;
-  const match = listReferenceFiles().find((file) => path.basename(file) === name);
+  const match = listLocalReferenceFiles().find((file) => path.basename(file) === name);
   if (!match) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }

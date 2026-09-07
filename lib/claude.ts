@@ -2,8 +2,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import * as z from "zod";
 import { config } from "./config";
-import { pickReferences } from "./reference";
-import { FONT_KEYS, type GenerateResponse, type MemeSpec } from "@/shared/types";
+import { pickReferences, type ReferenceImage } from "./reference";
+import {
+  FONT_KEYS,
+  type GenerateResponse,
+  type MemeSpec,
+  type ReferenceRef,
+} from "@/shared/types";
 
 const client = new Anthropic();
 
@@ -87,7 +92,7 @@ STYLE REFERENCE
 The images before the new photo are recent posts from this account, drawn at random for this request. They are a tiny sample, not the whole account — a different writer working on the same photo right now is looking at different ones. Read yours for the voice, the joke construction, and the visual habits: where text sits, how big it is, which typeface, whether there is a band. Let the posts you were given pull you toward the kind of joke and the kind of layout they represent. Match the house style; do not copy a past caption word for word.`;
 
 function contentBlocks(
-  references: ReturnType<typeof pickReferences>,
+  references: ReferenceImage[],
   photo: { mediaType: SupportedMediaType; data: string },
   task: string,
 ): Anthropic.Beta.BetaContentBlockParam[] {
@@ -103,7 +108,15 @@ function contentBlocks(
     for (const reference of references) {
       blocks.push({
         type: "image",
-        source: { type: "base64", media_type: reference.mediaType, data: reference.data },
+        // A Blob-hosted reference goes by URL, so its bytes never pass through
+        // this function; a local one has to be inlined.
+        source: reference.url
+          ? { type: "url", url: reference.url }
+          : {
+              type: "base64",
+              media_type: reference.mediaType ?? "image/jpeg",
+              data: reference.data ?? "",
+            },
       });
     }
   }
@@ -165,7 +178,7 @@ const hex = (value: string, fallback: string) =>
 function normalise(
   variant: z.infer<typeof VariantSchema>,
   id: string,
-  references: string[],
+  references: ReferenceRef[],
 ): MemeSpec {
   const blocks = (variant.blocks ?? [])
     .filter((block) => block.text?.trim())
@@ -209,7 +222,7 @@ async function generateOne(
   task: string,
   index: number,
 ): Promise<{ variant: MemeSpec; inputTokens: number; outputTokens: number }> {
-  const references = pickReferences();
+  const references = await pickReferences();
 
   const response = await client.beta.messages.parse({
     model: config.model,
@@ -239,7 +252,10 @@ async function generateOne(
     variant: normalise(
       parsed,
       `${response.id}-${index}`,
-      references.map((reference) => reference.name),
+      references.map((reference) => ({
+        name: reference.name,
+        url: reference.thumbnailUrl,
+      })),
     ),
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
