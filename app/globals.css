@@ -31,9 +31,48 @@ select {
 /* One column, phone-width, like a feed. -------------------------------- */
 
 .app {
+  padding: 0 0 96px;
+}
+
+/*
+ * One centred column to start. Once there are results and the viewport is wide
+ * enough, it splits: the photo, controls and the chosen variant's references on
+ * the left, the generations on the right. Narrow screens never split — the feed
+ * just continues below the composer.
+ */
+.shell {
   max-width: 560px;
   margin: 0 auto;
-  padding: 0 0 96px;
+}
+
+@media (min-width: 1080px) {
+  .shell--split {
+    display: grid;
+    grid-template-columns: minmax(360px, 460px) minmax(0, 620px);
+    gap: 28px;
+    max-width: 1140px;
+    align-items: start;
+    padding: 0 20px;
+  }
+
+  .shell--split .composer {
+    position: sticky;
+    top: 73px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-top: 20px;
+  }
+
+  .shell--split .feed {
+    margin-top: 20px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .shell--split .post:last-child {
+    border-bottom: 0;
+  }
 }
 
 .topbar {
@@ -352,28 +391,122 @@ select {
   color: var(--paper);
 }
 
+/* Reference strip ------------------------------------------------------- */
+
 .refs {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px 16px 0;
 }
 
-.refs__label {
+.refs--open {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.refs__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-right: 2px;
+  cursor: pointer;
 }
 
-.refs__thumb {
+.refs__toggle:hover {
+  color: var(--ink);
+}
+
+.refs__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--ink);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+/* Collapsed: a row of small squares. Expanded: equal columns, side by side. */
+.refs__row {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.refs__img {
   width: 34px;
   height: 34px;
   object-fit: cover;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--wash);
+}
+
+.refs--open .refs__row {
+  gap: 8px;
+}
+
+.refs--open .refs__img {
+  width: auto;
+  height: auto;
+  flex: 1 1 0;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  border-radius: 6px;
+}
+
+/* Left panel on wide screens: the selected variant's references, expanded. */
+.sidepanel {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.sidepanel__title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sidepanel .refs {
+  padding: 0;
+}
+
+/* The panel duplicates what the feed shows inline, so on narrow screens only
+   one of them appears. */
+.sidepanel {
+  display: none;
+}
+
+@media (min-width: 1080px) {
+  .shell--split .sidepanel {
+    display: block;
+  }
+
+  .shell--split .post .refs {
+    display: none;
+  }
+}
+
+.styles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .post__edit {

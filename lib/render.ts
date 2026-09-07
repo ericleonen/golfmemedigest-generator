@@ -1,4 +1,4 @@
-import type { FontKey, MemeSpec, TextBlock } from "@/shared/types";
+import type { FontKey, MemeSpec, TextBlock, Weight } from "@/shared/types";
 
 /**
  * Canvas meme renderer. Claude decides the layout — bands, block positions,
@@ -10,37 +10,59 @@ import type { FontKey, MemeSpec, TextBlock } from "@/shared/types";
  * next/font generates hashed family names and exposes them as CSS variables,
  * so the canvas reads the variable rather than hardcoding a family.
  */
-const FONT_STACKS: Record<FontKey, { variable: string; fallback: string; weight: number }> = {
+const FONT_STACKS: Record<
+  FontKey,
+  { variable: string; fallback: string; weights: Record<Weight, number> }
+> = {
+  // Anton ships a single weight; asking for anything else just gets 400 back.
   impact: {
     variable: "--font-impact",
     fallback: `Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif`,
-    weight: 400,
+    weights: { light: 400, regular: 400, bold: 400 },
   },
   condensed: {
     variable: "--font-condensed",
     fallback: `"Arial Narrow", Impact, sans-serif`,
-    weight: 700,
+    weights: { light: 300, regular: 500, bold: 700 },
   },
   sans: {
     variable: "--font-sans",
     fallback: `"Helvetica Neue", Arial, sans-serif`,
-    weight: 700,
+    weights: { light: 300, regular: 400, bold: 700 },
   },
   serif: {
     variable: "--font-serif",
     fallback: `Georgia, "Times New Roman", serif`,
-    weight: 700,
+    weights: { light: 400, regular: 500, bold: 700 },
   },
   hand: {
     variable: "--font-hand",
     fallback: `"Bradley Hand", "Comic Sans MS", cursive`,
-    weight: 700,
+    weights: { light: 400, regular: 500, bold: 700 },
   },
 };
 
 const LINE_HEIGHT = 1.12;
 
-function fontString(key: FontKey, size: number): string {
+/**
+ * Outline thickness as a fraction of the font size, per weight.
+ *
+ * A light face carrying an Impact-sized outline reads as heavy — the stroke
+ * swallows the thin strokes it is meant to be protecting, and the whole point
+ * of the modern format is understatement. Lighter text gets a proportionally
+ * thinner outline: enough to hold it off a busy photo, not enough to bold it.
+ */
+const STROKE_RATIO: Record<Weight, number> = {
+  light: 0.055,
+  regular: 0.095,
+  bold: 0.16,
+};
+
+function strokeWidth(size: number, weight: Weight): number {
+  return Math.max(1.5, size * (STROKE_RATIO[weight] ?? STROKE_RATIO.bold));
+}
+
+function fontString(key: FontKey, size: number, weight: Weight = "bold"): string {
   const stack = FONT_STACKS[key] ?? FONT_STACKS.impact;
   let family = stack.fallback;
   if (typeof document !== "undefined") {
@@ -49,7 +71,7 @@ function fontString(key: FontKey, size: number): string {
       .trim();
     if (resolved) family = `${resolved}, ${stack.fallback}`;
   }
-  return `${stack.weight} ${size}px ${family}`;
+  return `${stack.weights[weight] ?? stack.weights.bold} ${size}px ${family}`;
 }
 
 /** Webfonts must be loaded before the first draw or the layout shifts after. */
@@ -57,8 +79,10 @@ export async function ensureFonts(): Promise<void> {
   if (typeof document === "undefined" || !("fonts" in document)) return;
   try {
     await Promise.all(
-      (Object.keys(FONT_STACKS) as FontKey[]).map((key) =>
-        document.fonts.load(fontString(key, 100)),
+      (Object.keys(FONT_STACKS) as FontKey[]).flatMap((key) =>
+        (["light", "regular", "bold"] as Weight[]).map((weight) =>
+          document.fonts.load(fontString(key, 100, weight)),
+        ),
       ),
     );
     await document.fonts.ready;
@@ -115,7 +139,7 @@ function layout(
   let size = Math.max(8, block.size * canvasWidth);
 
   for (let attempt = 0; attempt < 24; attempt++) {
-    ctx.font = fontString(block.font, size);
+    ctx.font = fontString(block.font, size, block.weight);
     const lines = wrap(ctx, text, maxWidth);
     const widest = lines.reduce(
       (max, line) => Math.max(max, ctx.measureText(line).width),
@@ -125,7 +149,7 @@ function layout(
     size *= 0.94;
   }
 
-  ctx.font = fontString(block.font, size);
+  ctx.font = fontString(block.font, size, block.weight);
   return { lines: wrap(ctx, text, maxWidth), size };
 }
 
@@ -151,7 +175,7 @@ function resolve(
   // outside the measured box — margin has to cover that or strokes kiss the
   // canvas edge even when the text itself is inside.
   const strokeAllowance =
-    block.stroke === "none" ? 0 : Math.max(2, size * 0.16) / 2;
+    block.stroke === "none" ? 0 : strokeWidth(size, block.weight) / 2;
   const margin = canvasWidth * 0.022 + strokeAllowance;
 
   const halfWidth = widest / 2;
@@ -211,7 +235,7 @@ function drawBlock(
   ctx.translate(centreX, centreY);
   if (block.rotation) ctx.rotate((block.rotation * Math.PI) / 180);
 
-  ctx.font = fontString(block.font, size);
+  ctx.font = fontString(block.font, size, block.weight);
   ctx.textAlign = block.align;
   ctx.textBaseline = "top";
   ctx.lineJoin = "round";
@@ -224,7 +248,7 @@ function drawBlock(
   lines.forEach((line, i) => {
     const y = -height / 2 + i * size * LINE_HEIGHT;
     if (block.stroke !== "none") {
-      ctx.lineWidth = Math.max(2, size * 0.16);
+      ctx.lineWidth = strokeWidth(size, block.weight);
       ctx.strokeStyle = block.stroke === "white" ? "#ffffff" : "#000000";
       ctx.strokeText(line, anchorX, y);
     }

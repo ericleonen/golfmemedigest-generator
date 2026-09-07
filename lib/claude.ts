@@ -5,8 +5,11 @@ import { config } from "./config";
 import { pickReferences, type ReferenceImage } from "./reference";
 import {
   FONT_KEYS,
+  MEME_STYLES,
+  WEIGHTS,
   type GenerateResponse,
   type MemeSpec,
+  type MemeStyle,
   type ReferenceRef,
 } from "@/shared/types";
 
@@ -29,6 +32,11 @@ const TextBlockSchema = z.object({
     .enum(FONT_KEYS as [string, ...string[]])
     .describe(
       "impact = heavy condensed caps, the classic meme look. condensed = tall narrow bold sans. sans = clean neutral, screenshot energy. serif = elegant high-contrast, deadpan and editorial. hand = loose handwriting, an annotation scrawled on.",
+    ),
+  weight: z
+    .enum(WEIGHTS as unknown as [string, ...string[]])
+    .describe(
+      "Stroke weight. light is airy and understated, regular is neutral, bold is loud. impact only has one weight and ignores this.",
     ),
   uppercase: z.boolean().describe("Render in ALL CAPS. True for impact, usually false for serif and hand."),
   color: z.string().describe('Hex fill, e.g. "#ffffff" or "#111111".'),
@@ -74,22 +82,54 @@ HOW TO WRITE
 HOW TO LAY IT OUT
 You control the whole canvas. The canvas is the photo, optionally with a solid band added above it (padTop) and/or below it (padBottom). Every text block is placed by its centre, in fractions of the FULL canvas: x from 0 (left) to 1 (right), y from 0 (top) to 1 (bottom).
 
-Choose a treatment that fits this photo and this joke. Some that work:
-- Impact caps top and bottom over the photo: padTop 0, padBottom 0, two blocks at y around 0.08 and 0.92, font impact, white with black stroke, size around 0.1.
-- Caption bar: padTop about 0.18, background "#ffffff", one sans block at y about 0.09 in near-black with stroke none. Reads like a tweet above an untouched photo.
-- One line across the bottom: a single impact or condensed block at y about 0.9.
-- A label pinned to something in the frame: a small block placed right on the object it names, maybe tilted a few degrees. Use the actual position of the thing in the photo.
-- Setup on a band above, punchline over the photo. Or a handwritten aside in a corner. Or a serif line, small and centred, played completely straight.
-
 Rules that keep it readable:
 - Text over photo needs a stroke. Text on a solid band should have stroke "none".
 - Keep blocks inside the canvas: y minus half the text height must stay above 0, and below 1 at the bottom. Leave a margin of about 0.04.
 - Do not let blocks overlap each other, and do not cover the face or the subject of the joke.
 - If you add a band, put text in it. Do not add a band and then place everything over the photo.
-- Pick the treatment this photo and this joke want. Do not default to Impact caps every time.
 
 STYLE REFERENCE
 The images before the new photo are recent posts from this account, drawn at random for this request. They are a tiny sample, not the whole account — a different writer working on the same photo right now is looking at different ones. Read yours for the voice, the joke construction, and the visual habits: where text sits, how big it is, which typeface, whether there is a band. Let the posts you were given pull you toward the kind of joke and the kind of layout they represent. Match the house style; do not copy a past caption word for word.`;
+
+
+/** What each house format actually means, in layout terms Claude can execute. */
+const STYLE_BRIEFS: Record<Exclude<MemeStyle, "auto">, string> = {
+  old: `FORMAT: OLD SCHOOL
+The classic 2010s image macro. Heavy condensed caps straight over the photo, no bands.
+- padTop 0 and padBottom 0. Never add a band in this format.
+- font "impact", uppercase true, color "#ffffff", stroke "black", weight "bold".
+- Usually two blocks: a setup near y 0.09 and a punchline near y 0.91. One bottom block alone is fine when the photo carries the setup.
+- size around 0.09 to 0.12, width around 0.9. Big and blunt.
+- Setup on top, turn on the bottom. Do not repeat the top line's words in the bottom line.`,
+
+  modern: `FORMAT: MODERN
+Understated type laid over the photo. The joke does the work, not the typography.
+- padTop 0 and padBottom 0. No bands.
+- font "sans" (or "condensed" for something tighter), weight "light", uppercase false. Sentence case, written the way someone actually types.
+- color "#ffffff" with stroke "black" over a busy photo; over a clean area you may drop to stroke "none" if it stays readable.
+- One block, occasionally two. size around 0.04 to 0.06 — noticeably smaller than the old-school format.
+- Place it in the quiet part of the frame: a sky, a fairway, an empty wall. Look at where the photo is actually empty and put it there, rather than defaulting to the middle.`,
+
+  "fill-in-blanks": `FORMAT: FILL IN THE BLANK
+A line with a literal gap the reader completes in their head or in the comments.
+- Write the blank as a run of underscores, at least four: "____". One blank is usually strongest; two at most.
+- The setup has to constrain the answer hard enough to be funny. "Nobody has ever once said ____ after a shank" works. "Golf is ____" does not.
+- The photo should make the gap obvious — the blank is the punchline the picture is setting up.
+- Layout is yours: caps over the photo, or a white band (padTop about 0.18, background "#ffffff", color "#111111", stroke "none") when the line is long enough to need the room.
+- Keep the blank on one line with the words around it where you can; a blank that wraps to its own line reads as a mistake.`,
+};
+
+const AUTO_BRIEF = `FORMAT: YOUR CHOICE
+Pick whichever fits this photo and this joke, and commit to it fully:
+- Old school: Impact caps over the photo, no bands, setup top and punchline bottom.
+- Modern: small light sans laid over an empty part of the frame, sentence case.
+- Fill in the blank: a line with a literal ____ the reader completes.
+- Or something the reference posts show you that none of those names cover — a white caption band, a label pinned to an object in the frame, a handwritten aside.
+Do not default to Impact caps every time.`;
+
+function styleBrief(style: MemeStyle): string {
+  return style === "auto" ? AUTO_BRIEF : STYLE_BRIEFS[style];
+}
 
 function contentBlocks(
   references: ReferenceImage[],
@@ -179,6 +219,7 @@ function normalise(
   variant: z.infer<typeof VariantSchema>,
   id: string,
   references: ReferenceRef[],
+  style: MemeStyle,
 ): MemeSpec {
   const blocks = (variant.blocks ?? [])
     .filter((block) => block.text?.trim())
@@ -188,6 +229,9 @@ function normalise(
       font: (FONT_KEYS as string[]).includes(block.font)
         ? (block.font as MemeSpec["blocks"][number]["font"])
         : "impact",
+      weight: ((WEIGHTS as readonly string[]).includes(block.weight)
+        ? block.weight
+        : "bold") as MemeSpec["blocks"][number]["weight"],
       uppercase: Boolean(block.uppercase),
       color: hex(block.color ?? "", "#ffffff"),
       stroke: (["black", "white", "none"] as const).includes(block.stroke)
@@ -213,6 +257,7 @@ function normalise(
     instagramCaption: variant.instagramCaption ?? "",
     hashtags: (variant.hashtags ?? []).map((tag) => tag.replace(/^#/, "")),
     references,
+    style,
   };
 }
 
@@ -221,6 +266,7 @@ async function generateOne(
   photo: { mediaType: SupportedMediaType; data: string },
   task: string,
   index: number,
+  style: MemeStyle,
 ): Promise<{ variant: MemeSpec; inputTokens: number; outputTokens: number }> {
   const references = await pickReferences();
 
@@ -231,7 +277,7 @@ async function generateOne(
     // If a safety classifier declines the request, the server retries on a
     // comparable model instead of handing back an unusable turn.
     fallbacks: "default",
-    system: INSTRUCTIONS,
+    system: `${INSTRUCTIONS}\n\n${styleBrief(style)}`,
     output_config: {
       effort: config.effort,
       format: betaZodOutputFormat(ResultSchema),
@@ -256,6 +302,7 @@ async function generateOne(
         name: reference.name,
         url: reference.thumbnailUrl,
       })),
+      style,
     ),
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
@@ -277,8 +324,14 @@ export async function generateVariants(opts: {
   image: string;
   prompt?: string;
   count: number;
+  style?: MemeStyle;
 }): Promise<GenerateResponse> {
   const photo = parseDataUrl(opts.image);
+  const style: MemeStyle = (MEME_STYLES as readonly string[]).includes(
+    opts.style ?? "",
+  )
+    ? (opts.style as MemeStyle)
+    : "auto";
 
   const steer = opts.prompt?.trim();
   const task = [
@@ -290,7 +343,9 @@ export async function generateVariants(opts: {
   ].join("\n\n");
 
   const settled = await Promise.allSettled(
-    Array.from({ length: opts.count }, (_, i) => generateOne(photo, task, i)),
+    Array.from({ length: opts.count }, (_, i) =>
+      generateOne(photo, task, i, style),
+    ),
   );
 
   const variants: MemeSpec[] = [];

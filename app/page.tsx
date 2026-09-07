@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { HealthResponse, MemeSpec, TextBlock } from "@/shared/types";
+import type { HealthResponse, MemeSpec, MemeStyle, TextBlock } from "@/shared/types";
+import { MEME_STYLES, STYLE_LABELS } from "@/shared/types";
 import { BlockControls } from "@/components/BlockControls";
 import { Dropzone } from "@/components/Dropzone";
 import { Logo } from "@/components/Logo";
 import { MemeCanvas } from "@/components/MemeCanvas";
+import { ReferenceStrip } from "@/components/ReferenceStrip";
 import type { Usage } from "@/shared/types";
 import {
   UnauthorizedError,
@@ -27,6 +29,9 @@ function formatUsd(amount: number): string {
 export default function Page() {
   const [image, setImage] = useState<LoadedImage | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [style, setStyle] = useState<MemeStyle>("auto");
+  // Variant ids whose reference strip is expanded inline (narrow screens).
+  const [openRefs, setOpenRefs] = useState<Record<string, boolean>>({});
   const [variants, setVariants] = useState<MemeSpec[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<number | null>(null);
@@ -68,10 +73,12 @@ export default function Page() {
       const result = await generateMemes({
         image: image.apiDataUrl,
         prompt: prompt.trim() || undefined,
+        style,
       });
       setVariants(result.variants);
       setSelectedId(result.variants[0]?.id ?? null);
       setVotes({});
+      setOpenRefs({});
       setUsage(result.usage);
       setSpent((total) => total + result.usage.costUsd);
     } catch (err) {
@@ -188,7 +195,8 @@ export default function Page() {
         )}
       </header>
 
-      <section className="composer">
+      <div className={`shell${variants.length > 0 ? " shell--split" : ""}`}>
+        <section className="composer">
         <Dropzone image={image} onImage={setImage} onError={setError} />
 
         <input
@@ -202,6 +210,20 @@ export default function Page() {
             if (event.key === "Enter") void generate();
           }}
         />
+
+        <div className="styles" role="group" aria-label="Meme format">
+          {MEME_STYLES.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`chip${style === option ? " chip--on" : ""}`}
+              aria-pressed={style === option}
+              onClick={() => setStyle(option)}
+            >
+              {STYLE_LABELS[option]}
+            </button>
+          ))}
+        </div>
 
         <button
           type="button"
@@ -247,6 +269,15 @@ export default function Page() {
               <> · {health.feedbackVotes} vote{health.feedbackVotes === 1 ? "" : "s"} shaping the draw</>
             )}
           </p>
+        )}
+
+        {selected && selected.references.length > 0 && (
+          <section className="sidepanel">
+            <h2 className="sidepanel__title">
+              Styled on · {STYLE_LABELS[selected.style]}
+            </h2>
+            <ReferenceStrip references={selected.references} expanded static />
+          </section>
         )}
       </section>
 
@@ -326,22 +357,13 @@ export default function Page() {
                   )}
                 </div>
 
-                {variant.references.length > 0 && (
-                  <div className="refs">
-                    <span className="refs__label">Styled on</span>
-                    {variant.references.map((reference) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={reference.name}
-                        className="refs__thumb"
-                        src={reference.url}
-                        alt={reference.name}
-                        title={reference.name}
-                        loading="lazy"
-                      />
-                    ))}
-                  </div>
-                )}
+                <ReferenceStrip
+                  references={variant.references}
+                  expanded={Boolean(openRefs[variant.id])}
+                  onToggle={() =>
+                    setOpenRefs((all) => ({ ...all, [variant.id]: !all[variant.id] }))
+                  }
+                />
 
                 {isSelected && (
                   <div className="post__edit">
@@ -393,6 +415,7 @@ export default function Page() {
           })}
         </section>
       )}
+      </div>
     </main>
   );
 }

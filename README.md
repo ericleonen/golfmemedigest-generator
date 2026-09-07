@@ -121,6 +121,21 @@ If `BLOB_READ_WRITE_TOKEN` is not set, the app falls back to reading the local
 [`reference/`](reference/README.md) folder, so a fresh clone runs without any
 cloud setup.
 
+## Formats
+
+The composer offers four:
+
+| Choice | What it makes |
+| --- | --- |
+| **Auto** | Claude picks, including treatments none of the named formats cover |
+| **Old school** | Impact caps over the photo, no bands, setup top and punchline bottom |
+| **Modern** | Small light sans laid over an empty part of the frame, sentence case |
+| **Fill in the blank** | A line with a literal `____` the reader completes |
+
+Each is a concrete layout brief in `lib/claude.ts` — positions, font, weight and
+size ranges — not just a word in the prompt, so the output looks like the format
+rather than approximating it.
+
 ## The layout system
 
 Claude gets one flexible canvas rather than a menu of fixed templates:
@@ -136,13 +151,25 @@ single line across the bottom, a small handwritten label pinned to something in
 the frame, a deadpan serif line — and combinations nobody wrote a template for.
 
 Five typefaces are available: `impact` (Anton), `condensed` (Oswald), `sans`
-(Inter), `serif` (Playfair Display) and `hand` (Caveat). All self-hosted by
-`next/font`, so the canvas renders identically on every machine.
+(Inter), `serif` (Playfair Display) and `hand` (Caveat), each in light, regular
+or bold. All self-hosted by `next/font`, so the canvas renders identically on
+every machine.
+
+Outline thickness scales with weight — a light face carrying an Impact-sized
+outline reads as heavy, which would defeat the modern format.
 
 **Nothing Claude returns can produce a broken image.** Numbers are clamped on
 arrival, and the renderer independently keeps every block inside the canvas —
 accounting for the outline width — so text cannot clip off an edge no matter
 what the model returns or where you drag it.
+
+## Layout
+
+One centred column to start. Once there are results and the window is at least
+1080px wide it splits: photo, controls and the selected variant's references on
+the left, generations on the right. Narrower than that it stays a single feed,
+and each variant's references collapse to thumbnails you tap to expand — all
+three side by side at a size where the text is readable.
 
 ## Editing
 

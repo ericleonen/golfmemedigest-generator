@@ -18,10 +18,29 @@ export const FONTS = {
 export type FontKey = keyof typeof FONTS;
 export const FONT_KEYS = Object.keys(FONTS) as FontKey[];
 
+/** Text weight. Ignored by faces that only ship one (Anton). */
+export const WEIGHTS = ["light", "regular", "bold"] as const;
+export type Weight = (typeof WEIGHTS)[number];
+
+/**
+ * The house formats. "auto" lets Claude pick whichever the photo wants.
+ */
+export const MEME_STYLES = ["auto", "old", "modern", "fill-in-blanks"] as const;
+export type MemeStyle = (typeof MEME_STYLES)[number];
+
+export const STYLE_LABELS: Record<MemeStyle, string> = {
+  auto: "Auto",
+  old: "Old school",
+  modern: "Modern",
+  "fill-in-blanks": "Fill in the blank",
+};
+
 /** One run of text placed on the canvas. */
 export interface TextBlock {
   text: string;
   font: FontKey;
+  /** Stroke weight of the face. Anton has only one, so it ignores this. */
+  weight: Weight;
   /** ALL CAPS or as written. */
   uppercase: boolean;
   /** Hex fill, e.g. "#ffffff". */
@@ -61,6 +80,8 @@ export interface MemeSpec {
   hashtags: string[];
   /** The past memes this variant was styled on. */
   references: ReferenceRef[];
+  /** The format this variant was built to. */
+  style: MemeStyle;
 }
 
 /** A reference meme, as far as the browser needs to know about it. */
@@ -77,6 +98,8 @@ export interface GenerateRequest {
   prompt?: string;
   /** How many variants to ask for. */
   count?: number;
+  /** Which house format to build. Defaults to "auto". */
+  style?: MemeStyle;
 }
 
 export interface GenerateResponse {

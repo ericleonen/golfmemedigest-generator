@@ -50,6 +50,7 @@ export async function POST(request: Request) {
       image: body.image,
       prompt: typeof body.prompt === "string" ? body.prompt.slice(0, 400) : "",
       count,
+      style: body.style,
     });
     return NextResponse.json(result);
   } catch (err) {
