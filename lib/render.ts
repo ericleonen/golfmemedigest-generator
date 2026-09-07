@@ -266,6 +266,49 @@ export interface RenderOptions {
   highlightBlock?: number;
 }
 
+/**
+ * Grows the bands until every block that belongs in one actually fits.
+ *
+ * Claude picks padTop by eye and places text with y measured over the whole
+ * canvas — including the band it just added — which is fiddly arithmetic to get
+ * right. Rather than trust it, measure: if a block sitting in a band is taller
+ * than the band, make the band taller. A caption spilling out of its white
+ * strip and onto the photo is the one failure this format cannot survive.
+ */
+function fitBands(
+  ctx: CanvasRenderingContext2D,
+  spec: MemeSpec,
+  width: number,
+  imageHeight: number,
+): { padTop: number; padBottom: number } {
+  let padTop = Math.round(spec.padTop * imageHeight);
+  let padBottom = Math.round(spec.padBottom * imageHeight);
+  const margin = width * 0.03;
+
+  for (let pass = 0; pass < 4; pass++) {
+    const height = imageHeight + padTop + padBottom;
+    let neededTop = 0;
+    let neededBottom = 0;
+
+    for (const block of spec.blocks) {
+      const centre = block.y * height;
+      const { height: blockHeight } = resolve(ctx, block, width, height);
+
+      if (padTop > 0 && centre < padTop) {
+        neededTop = Math.max(neededTop, blockHeight + margin * 2);
+      } else if (padBottom > 0 && centre > padTop + imageHeight) {
+        neededBottom = Math.max(neededBottom, blockHeight + margin * 2);
+      }
+    }
+
+    if (neededTop <= padTop && neededBottom <= padBottom) break;
+    padTop = Math.max(padTop, Math.ceil(neededTop));
+    padBottom = Math.max(padBottom, Math.ceil(neededBottom));
+  }
+
+  return { padTop, padBottom };
+}
+
 export function renderMeme(
   source: RenderSource,
   spec: MemeSpec,
@@ -276,15 +319,16 @@ export function renderMeme(
   const width = Math.round(source.width * scale);
   const imageHeight = Math.round(source.height * scale);
 
-  const padTop = Math.round(spec.padTop * imageHeight);
-  const padBottom = Math.round(spec.padBottom * imageHeight);
-  const height = imageHeight + padTop + padBottom;
-
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D is unavailable in this browser.");
+
+  // Measure first: the band height decides the canvas height.
+  const { padTop, padBottom } = fitBands(ctx, spec, width, imageHeight);
+  const height = imageHeight + padTop + padBottom;
+
+  canvas.width = width;
+  canvas.height = height;
 
   if (padTop > 0 || padBottom > 0) {
     ctx.fillStyle = spec.background;
@@ -325,12 +369,14 @@ export function blockAtPoint(
   const canvas = document.createElement("canvas");
   const width = 1000;
   const imageHeight = Math.round((source.height / source.width) * width);
-  const height =
-    imageHeight + Math.round(spec.padTop * imageHeight) + Math.round(spec.padBottom * imageHeight);
-  canvas.width = width;
-  canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
+
+  // Same band sizing as the render, or the hit boxes drift from what is drawn.
+  const { padTop, padBottom } = fitBands(ctx, spec, width, imageHeight);
+  const height = imageHeight + padTop + padBottom;
+  canvas.width = width;
+  canvas.height = height;
 
   const px = point.x * width;
   const py = point.y * height;

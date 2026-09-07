@@ -103,26 +103,30 @@ The classic 2010s image macro. Heavy condensed caps straight over the photo, no 
 - Setup on top, turn on the bottom. Do not repeat the top line's words in the bottom line.`,
 
   modern: `FORMAT: MODERN
-Understated type laid over the photo. The joke does the work, not the typography.
-- padTop 0 and padBottom 0. No bands.
-- font "sans" (or "condensed" for something tighter), weight "light", uppercase false. Sentence case, written the way someone actually types.
-- color "#ffffff" with stroke "black" over a busy photo; over a clean area you may drop to stroke "none" if it stays readable.
-- One block, occasionally two. size around 0.04 to 0.06 — noticeably smaller than the old-school format.
-- Place it in the quiet part of the frame: a sky, a fairway, an empty wall. Look at where the photo is actually empty and put it there, rather than defaulting to the middle.`,
+A white band above the photo with thin black text on it, like a tweet sitting on top of a picture. The photo itself is left completely untouched.
+- padTop between 0.14 and 0.30 — enough room for the line to breathe. padBottom 0. background "#ffffff".
+- Exactly one block, and it goes IN THE BAND. Never place text over the photo in this format.
+- font "sans", weight "light", uppercase false, color "#111111", stroke "none", align "center", width about 0.9, size about 0.035 to 0.05.
+- Sentence case, written the way a person actually types — lowercase beginnings and trailing thoughts are fine. No Impact, no outline, no shouting.
+- Placing the block: y is measured over the WHOLE canvas, which is taller than the photo once a band is added. Centre the text in the band by using half the band's share of the canvas:
+    padTop 0.16 -> y 0.069
+    padTop 0.20 -> y 0.083
+    padTop 0.26 -> y 0.103
+  If the line needs two rows, use a taller band rather than a smaller font.`,
 
   "fill-in-blanks": `FORMAT: FILL IN THE BLANK
 A line with a literal gap the reader completes in their head or in the comments.
 - Write the blank as a run of underscores, at least four: "____". One blank is usually strongest; two at most.
 - The setup has to constrain the answer hard enough to be funny. "Nobody has ever once said ____ after a shank" works. "Golf is ____" does not.
 - The photo should make the gap obvious — the blank is the punchline the picture is setting up.
-- Layout is yours: caps over the photo, or a white band (padTop about 0.18, background "#ffffff", color "#111111", stroke "none") when the line is long enough to need the room.
+- Layout is yours: Impact caps over the photo, or the white band from the modern format when the line is long enough to need the room. Pick whichever suits the line.
 - Keep the blank on one line with the words around it where you can; a blank that wraps to its own line reads as a mistake.`,
 };
 
 const AUTO_BRIEF = `FORMAT: YOUR CHOICE
 Pick whichever fits this photo and this joke, and commit to it fully:
 - Old school: Impact caps over the photo, no bands, setup top and punchline bottom.
-- Modern: small light sans laid over an empty part of the frame, sentence case.
+- Modern: a white band above the photo carrying thin black sentence-case text, photo untouched.
 - Fill in the blank: a line with a literal ____ the reader completes.
 - Or something the reference posts show you that none of those names cover — a white caption band, a label pinned to an object in the frame, a handwritten aside.
 Do not default to Impact caps every time.`;

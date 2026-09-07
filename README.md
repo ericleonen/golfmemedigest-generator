@@ -129,12 +129,18 @@ The composer offers four:
 | --- | --- |
 | **Auto** | Claude picks, including treatments none of the named formats cover |
 | **Old school** | Impact caps over the photo, no bands, setup top and punchline bottom |
-| **Modern** | Small light sans laid over an empty part of the frame, sentence case |
+| **Modern** | A white band above the photo carrying thin black sentence-case text; photo untouched |
 | **Fill in the blank** | A line with a literal `____` the reader completes |
 
 Each is a concrete layout brief in `lib/claude.ts` — positions, font, weight and
 size ranges — not just a word in the prompt, so the output looks like the format
 rather than approximating it.
+
+Caption bands size themselves. Claude picks `padTop` by eye and places text with
+`y` measured over the whole canvas, band included, which is fiddly arithmetic to
+get right. The renderer measures instead: a block sitting in a band taller than
+the band grows the band. Text can never spill out of the white strip onto the
+photo, whatever numbers come back.
 
 ## The layout system
 
