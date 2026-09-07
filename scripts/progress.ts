@@ -5,6 +5,23 @@
  */
 
 const BAR_WIDTH = 28;
+
+/**
+ * A legacy Windows console (cmd.exe, the old PowerShell host) runs a non-UTF-8
+ * code page and renders block and middle-dot characters as mojibake. Windows
+ * Terminal, VS Code's terminal and Git Bash all announce themselves, so treat
+ * a bare win32 with none of those as the old console and use ASCII there.
+ */
+const UNICODE_SAFE =
+  process.platform !== "win32" ||
+  Boolean(process.env.WT_SESSION || process.env.TERM_PROGRAM || process.env.TERM);
+
+const GLYPHS = UNICODE_SAFE
+  ? { full: "█", empty: "·", separator: "·", ellipsis: "…" }
+  : { full: "#", empty: "-", separator: "-", ellipsis: "..." };
+
+/** Separator used here and in callers' summary lines, so both stay readable. */
+export const SEP = GLYPHS.separator;
 const CLEAR_LINE = "\r[2K";
 
 export function humanBytes(bytes: number): string {
@@ -48,14 +65,14 @@ export class Progress {
       if (this.done - this.lastPlainLog >= 25 || this.done === this.total) {
         this.lastPlainLog = this.done;
         console.log(
-          `  ${this.done}/${this.total} · ${humanBytes(this.bytes)} · ${rate.toFixed(1)}/s`,
+          `  ${this.done}/${this.total} ${SEP} ${humanBytes(this.bytes)} ${SEP} ${rate.toFixed(1)}/s`,
         );
       }
       return;
     }
 
     const filled = Math.round(fraction * BAR_WIDTH);
-    const bar = "█".repeat(filled) + "·".repeat(BAR_WIDTH - filled);
+    const bar = GLYPHS.full.repeat(filled) + GLYPHS.empty.repeat(BAR_WIDTH - filled);
     const percent = `${Math.round(fraction * 100)}%`.padStart(4);
     const counter = `${this.done}/${this.total}`;
 
@@ -68,7 +85,11 @@ export class Progress {
     // just looks like a glitch, so drop the label entirely.
     const room = Math.max(0, (process.stdout.columns ?? 100) - head.length - 1);
     const tail =
-      room < 6 ? "" : label.length > room ? `${label.slice(0, room - 1)}…` : label;
+      room < 6
+        ? ""
+        : label.length > room
+          ? `${label.slice(0, room - GLYPHS.ellipsis.length)}${GLYPHS.ellipsis}`
+          : label;
 
     process.stdout.write(`${CLEAR_LINE}${head}${tail}`);
   }

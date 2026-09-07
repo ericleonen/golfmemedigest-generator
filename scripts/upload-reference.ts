@@ -16,10 +16,11 @@
  */
 import "./env"; // must stay first: populates process.env before anything reads it
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { list, put } from "@vercel/blob";
 import sharp from "sharp";
-import { Progress, humanBytes, humanDuration } from "./progress";
+import { Progress, SEP, humanBytes, humanDuration } from "./progress";
 
 /** Extensions Claude can read as images. Everything else is skipped. */
 const IMAGE_EXTENSIONS = new Map<string, string>([
@@ -229,7 +230,10 @@ async function main() {
     );
   }
 
-  const folder = path.resolve(args.folder.replace(/^~(?=$|\/)/, process.env.HOME ?? "~"));
+  // os.homedir() rather than $HOME: Windows sets USERPROFILE, not HOME.
+  const folder = path.resolve(
+    args.folder.replace(/^~(?=$|[/\\])/, os.homedir()),
+  );
   if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
     fail(`Not a folder: ${folder}`);
   }
@@ -316,9 +320,9 @@ async function main() {
 
   const uploaded = queue.length - failures.length;
   console.log(
-    `  Uploaded ${uploaded}/${queue.length} · ${humanBytes(progress.totalBytes)} · ${humanDuration(
-      progress.elapsedMs,
-    )}`,
+    `  Uploaded ${uploaded}/${queue.length} ${SEP} ${humanBytes(
+      progress.totalBytes,
+    )} ${SEP} ${humanDuration(progress.elapsedMs)}`,
   );
 
   if (failures.length) {

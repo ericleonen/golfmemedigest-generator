@@ -34,11 +34,15 @@ generic meme bot.
 2. Locally:
 
 ```bash
+npm install                          # the script needs tsx, from devDependencies
 npx vercel link                      # once, to associate the folder with the project
 npx vercel env pull .env.local       # fetches BLOB_READ_WRITE_TOKEN
-npm run upload -- ~/Pictures/golfmemedigest --dry-run
-npm run upload -- ~/Pictures/golfmemedigest
+npm run upload -- ./posts --dry-run
+npm run upload -- ./posts
 ```
+
+If you see `'tsx' is not recognized`, `node_modules` is missing or stale — run
+`npm install` first.
 
 Images only — videos and sub-folders are skipped. Each is resized to 1080px on
 the long edge before upload. Re-running is a no-op for anything already there,

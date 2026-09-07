@@ -43,10 +43,15 @@ like your account.
 Your past memes live in a Vercel Blob store. Upload a folder of them once:
 
 ```bash
+npm install                             # the script needs tsx, from devDependencies
 npx vercel env pull .env.local          # fetches BLOB_READ_WRITE_TOKEN
-npm run upload -- ~/Pictures/golfmemedigest --dry-run
-npm run upload -- ~/Pictures/golfmemedigest
+npm run upload -- ./posts --dry-run
+npm run upload -- ./posts
 ```
+
+Windows works — the progress bar falls back to ASCII on the legacy cmd.exe and
+PowerShell 5 consoles, which cannot render block characters. Relative paths,
+absolute paths and `~` all work.
 
 The script walks the folder (one level — sub-folders are reported, not
 descended), takes JPEG/PNG/WebP only, skips videos and everything else, resizes
