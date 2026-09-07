@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { config } from "@/lib/config";
-import { countReferences } from "@/lib/reference";
+import { blobConfigured, countReferences } from "@/lib/reference";
+import { loadWeights } from "@/lib/weights";
 import type { HealthResponse } from "@/shared/types";
 
 export const runtime = "nodejs";
@@ -14,6 +15,8 @@ export async function GET() {
     authRequired: Boolean(config.appPassword),
     referenceImages: await countReferences(),
     referenceSampleSize: config.referenceSampleSize,
+    blobConfigured: blobConfigured(),
+    feedbackVotes: blobConfigured() ? (await loadWeights()).votes : 0,
   };
   return NextResponse.json(body);
 }

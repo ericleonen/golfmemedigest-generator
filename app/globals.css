@@ -312,11 +312,44 @@ select {
   height: auto;
 }
 
-.post__angle {
-  margin: 0;
+.post__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 10px 16px 0;
+}
+
+.post__angle {
+  flex: 1;
+  margin: 0;
   font-size: 13px;
   color: var(--muted);
+}
+
+.votes {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.vote {
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vote:hover {
+  border-color: var(--ink);
+}
+
+.vote--on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 .refs {

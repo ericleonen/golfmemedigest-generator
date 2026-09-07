@@ -7,7 +7,13 @@ import { Dropzone } from "@/components/Dropzone";
 import { Logo } from "@/components/Logo";
 import { MemeCanvas } from "@/components/MemeCanvas";
 import type { Usage } from "@/shared/types";
-import { UnauthorizedError, fetchHealth, generateMemes, logout } from "@/lib/api";
+import {
+  UnauthorizedError,
+  fetchHealth,
+  generateMemes,
+  logout,
+  sendFeedback,
+} from "@/lib/api";
 import type { LoadedImage } from "@/lib/image";
 import { downloadCanvas, ensureFonts, renderMeme } from "@/lib/render";
 
@@ -32,6 +38,9 @@ export default function Page() {
   const [fontsReady, setFontsReady] = useState(false);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [spent, setSpent] = useState(0);
+  // Variant id → the vote currently showing, so a second tap can undo it.
+  const [votes, setVotes] = useState<Record<string, 1 | -1>>({});
+  const [voteError, setVoteError] = useState<string | null>(null);
 
   useEffect(() => {
     void ensureFonts().then(() => setFontsReady(true));
@@ -62,6 +71,7 @@ export default function Page() {
       });
       setVariants(result.variants);
       setSelectedId(result.variants[0]?.id ?? null);
+      setVotes({});
       setUsage(result.usage);
       setSpent((total) => total + result.usage.costUsd);
     } catch (err) {
@@ -73,6 +83,41 @@ export default function Page() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * Sends the change in vote rather than the new state, so tapping like twice
+   * takes the vote back off and flipping like to dislike moves it by two.
+   */
+  const vote = async (variant: MemeSpec, next: 1 | -1) => {
+    const current = votes[variant.id];
+    const applied = current === next ? undefined : next;
+    const delta = (applied ?? 0) - (current ?? 0);
+    if (delta === 0) return;
+
+    setVotes((all) => {
+      const copy = { ...all };
+      if (applied) copy[variant.id] = applied;
+      else delete copy[variant.id];
+      return copy;
+    });
+    setVoteError(null);
+
+    try {
+      await sendFeedback({
+        references: variant.references.map((reference) => reference.name),
+        delta,
+      });
+    } catch (err) {
+      // Put the button back the way it was; the vote did not land.
+      setVotes((all) => {
+        const copy = { ...all };
+        if (current) copy[variant.id] = current;
+        else delete copy[variant.id];
+        return copy;
+      });
+      setVoteError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -179,12 +224,24 @@ export default function Page() {
         )}
         {error && <p className="note note--bad">{error}</p>}
 
+        {voteError && <p className="note note--bad">{voteError}</p>}
+
         {usage && (
           <p className="spend">
             Last run: {usage.requests} request{usage.requests === 1 ? "" : "s"} ·{" "}
             {usage.inputTokens.toLocaleString()} in / {usage.outputTokens.toLocaleString()} out ·{" "}
             <strong>{formatUsd(usage.costUsd)}</strong>
             {spent > usage.costUsd && <> · {formatUsd(spent)} this session</>}
+          </p>
+        )}
+
+        {health && health.referenceImages > 0 && (
+          <p className="spend">
+            {health.referenceImages.toLocaleString()} reference memes ·{" "}
+            {health.referenceSampleSize} drawn per variant
+            {health.blobConfigured && health.feedbackVotes > 0 && (
+              <> · {health.feedbackVotes} vote{health.feedbackVotes === 1 ? "" : "s"} shaping the draw</>
+            )}
           </p>
         )}
       </section>
@@ -239,7 +296,31 @@ export default function Page() {
                   </button>
                 )}
 
-                <p className="post__angle">{variant.angle}</p>
+                <div className="post__bar">
+                  <p className="post__angle">{variant.angle}</p>
+                  {health?.blobConfigured && (
+                    <div className="votes">
+                      <button
+                        type="button"
+                        className={`vote${votes[variant.id] === 1 ? " vote--on" : ""}`}
+                        title="More memes styled like this"
+                        aria-pressed={votes[variant.id] === 1}
+                        onClick={() => void vote(variant, 1)}
+                      >
+                        Like
+                      </button>
+                      <button
+                        type="button"
+                        className={`vote${votes[variant.id] === -1 ? " vote--on" : ""}`}
+                        title="Fewer memes styled like this"
+                        aria-pressed={votes[variant.id] === -1}
+                        onClick={() => void vote(variant, -1)}
+                      >
+                        Dislike
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 {variant.references.length > 0 && (
                   <div className="refs">

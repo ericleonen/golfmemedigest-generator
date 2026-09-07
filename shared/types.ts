@@ -103,6 +103,24 @@ export interface HealthResponse {
   referenceImages: number;
   /** How many of those are drawn per variant. */
   referenceSampleSize: number;
+  /** Whether the Blob store is wired up: the draw is only weighted if it is. */
+  blobConfigured: boolean;
+  /** Votes recorded so far. */
+  feedbackVotes: number;
+}
+
+/** A thumbs up or down on one variant. `delta` is the change, not the state. */
+export interface FeedbackRequest {
+  references: string[];
+  /** +1 like, -1 dislike, -2 like→dislike, +2 dislike→like. */
+  delta: number;
+}
+
+export interface FeedbackResponse {
+  /** Total votes recorded, across all time. */
+  votes: number;
+  /** New score for each reference in the request. */
+  scores: Record<string, number>;
 }
 
 export interface ApiError {

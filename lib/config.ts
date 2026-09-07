@@ -35,6 +35,14 @@ export const config = {
   referenceSampleSize: int("REFERENCE_SAMPLE_SIZE", 3),
 
   /**
+   * How hard one thumbs up or down moves a reference's odds. The multiplier is
+   * exp(rate x score), so 0.35 makes each vote about a 40% nudge and three
+   * consistent votes roughly triple (or third) how often that reference is
+   * drawn. Raise it to learn faster and noisier, lower it to be more cautious.
+   */
+  feedbackLearningRate: Number(process.env.FEEDBACK_LEARNING_RATE ?? 0.35),
+
+  /**
    * Rates used to estimate what a run cost, in dollars per million tokens.
    * Claude Opus 5 is $5 in / $25 out as of writing — override if that changes
    * or if you switch models.

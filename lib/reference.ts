@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { list } from "@vercel/blob";
 import { config } from "./config";
+import { loadWeights, samplingWeight } from "./weights";
 
 /**
  * The style reference: a few of your actual past memes, shown to Claude as
@@ -14,6 +15,10 @@ import { config } from "./config";
  *     byte — and the browser can use the same URL for the thumbnails.
  *  2. The local reference/ folder otherwise, so a clone with no Blob store
  *     still runs.
+ *
+ * The draw is weighted by thumbs up/down feedback on past generations — see
+ * lib/weights.ts. With no votes yet every reference weighs the same, so the
+ * draw is uniform until you start rating.
  */
 
 const MEDIA_TYPES = new Map<string, "image/jpeg" | "image/png" | "image/webp">([
@@ -98,7 +103,7 @@ export async function countReferences(): Promise<number> {
   return localFiles().length;
 }
 
-/** Fisher-Yates over a copy — a fresh draw per variant, no weighting. */
+/** Fisher-Yates over a copy. Used for the unweighted local-folder path. */
 function shuffle<T>(items: T[]): T[] {
   const out = items.slice();
   for (let i = out.length - 1; i > 0; i--) {
@@ -108,14 +113,38 @@ function shuffle<T>(items: T[]): T[] {
   return out;
 }
 
+/**
+ * Weighted sampling without replacement (Efraimidis-Spirakis): give each item
+ * a key of random^(1/weight) and keep the highest k. One pass, and the chance
+ * of being drawn is proportional to the weight.
+ */
+function weightedSample<T>(
+  items: T[],
+  count: number,
+  weightOf: (item: T) => number,
+): T[] {
+  return items
+    .map((item) => {
+      const weight = Math.max(weightOf(item), Number.EPSILON);
+      // Math.random() can return exactly 0, which would zero every key and
+      // quietly turn the draw into "the first k in array order".
+      const u = Math.random() || Number.EPSILON;
+      return { item, key: Math.pow(u, 1 / weight) };
+    })
+    .sort((a, b) => b.key - a.key)
+    .slice(0, count)
+    .map((entry) => entry.item);
+}
+
 export async function pickReferences(
   count = config.referenceSampleSize,
 ): Promise<ReferenceImage[]> {
   if (blobConfigured()) {
     try {
-      return shuffle(await listBlobs())
-        .slice(0, count)
-        .map((blob) => ({ name: blob.name, url: blob.url, thumbnailUrl: blob.url }));
+      const [blobs, weights] = await Promise.all([listBlobs(), loadWeights()]);
+      return weightedSample(blobs, count, (blob) =>
+        samplingWeight(weights.scores[blob.name]),
+      ).map((blob) => ({ name: blob.name, url: blob.url, thumbnailUrl: blob.url }));
     } catch (err) {
       console.error("Could not list the Blob store, falling back to local:", err);
     }

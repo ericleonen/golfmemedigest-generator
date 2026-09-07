@@ -49,8 +49,13 @@ the long edge before upload. Re-running is a no-op for anything already there,
 so adding memes later just means running it again; new uploads are live within
 about five minutes with no redeploy.
 
+3. Connect the store to the project: **Vercel → Storage → your store → Connect
+   Project**. That injects `BLOB_READ_WRITE_TOKEN` into every deployment.
+   Redeploy once so it takes effect.
+
 Nothing is committed to git for this, and the images are not bundled into the
-function — Claude reads them from their Blob URLs.
+function — Claude reads them from their Blob URLs. Adding memes later is just
+another `npm run upload`; no commit, no redeploy.
 
 ## Step 3 — Deploy to Vercel
 
@@ -108,9 +113,13 @@ curl https://golfmemedigest.ericleonen.com/api/health
 You want `"apiKeyConfigured": true`, `"authRequired": true`, and a
 `referenceImages` count matching what you uploaded.
 
-**If `referenceImages` is 0**, the deployment cannot see the Blob store. Check
-that the store is connected to the project in Vercel → Storage, which is what
-injects `BLOB_READ_WRITE_TOKEN` into the deployment.
+`blobConfigured` should also be `true`. **If it is `false`, or
+`referenceImages` is 0**, the deployment cannot see the Blob store — check that
+the store is connected to the project in Vercel → Storage, which is what injects
+`BLOB_READ_WRITE_TOKEN`, and that you have redeployed since connecting it.
+
+The like/dislike buttons only appear when `blobConfigured` is true, since the
+scores are stored there.
 
 ---
 

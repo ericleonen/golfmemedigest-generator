@@ -1,5 +1,7 @@
 import type {
   ApiError,
+  FeedbackRequest,
+  FeedbackResponse,
   GenerateRequest,
   GenerateResponse,
   HealthResponse,
@@ -34,6 +36,17 @@ export async function generateMemes(
     body: JSON.stringify(body),
   });
   return unwrap<GenerateResponse>(response);
+}
+
+export async function sendFeedback(
+  body: FeedbackRequest,
+): Promise<FeedbackResponse> {
+  const response = await fetch("/api/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<FeedbackResponse>(response);
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {

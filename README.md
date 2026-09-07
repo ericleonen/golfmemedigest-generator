@@ -67,8 +67,48 @@ adding new memes later just means running it again.
 | `--no-resize` | Upload the originals untouched |
 | `--force` | Re-upload files already in the store |
 
+### Making the store live in the app
+
+There is no code change — the app switches to Blob as soon as it can see a
+token.
+
+```bash
+npx vercel link                  # once
+npx vercel env pull .env.local   # writes BLOB_READ_WRITE_TOKEN
+npm run dev
+```
+
+In production, connect the Blob store to the project (Vercel → Storage → your
+store → Connect Project). Vercel then injects `BLOB_READ_WRITE_TOKEN` into every
+deployment; redeploy once so it picks it up. Confirm with `/api/health`:
+`blobConfigured` should be `true` and `referenceImages` should match your upload
+count.
+
 New uploads are picked up within about five minutes with no redeploy — the app
 lists the store at request time and caches that listing.
+
+## Rating what comes back
+
+Every generated meme has Like and Dislike buttons. A vote moves the odds of the
+2-3 reference memes that produced that variant: liked references get drawn more
+often, disliked ones less.
+
+- **Score.** Each reference starts at 0. A like adds +1 to every reference
+  behind that variant, a dislike -1. Tapping the same button again takes the
+  vote back; flipping like to dislike moves it by two.
+- **Weight.** `exp(FEEDBACK_LEARNING_RATE × score)`, clamped to 0.1x-10x. At the
+  default rate of 0.35, five consistent likes make a reference roughly 5.8x more
+  likely to be drawn and five dislikes about 0.17x — measured over 4,000 draws.
+- **Nothing is ever excluded.** The floor keeps a disliked reference in the
+  running at long odds, so it can still prove the votes wrong.
+
+Credit assignment is deliberately crude: three references made the meme and all
+three get the same credit, even though probably only one of them was
+responsible. Over many votes the noise averages out. If you want it to learn
+faster and noisier, raise `FEEDBACK_LEARNING_RATE`.
+
+Scores live in `meta/weights.json` in the same Blob store, so there is no second
+service to set up. Delete that file to reset all learning.
 
 Blob URLs are public but unguessable, which is what lets Claude read them
 directly and the browser show the "styled on" thumbnails. For memes you already
@@ -158,9 +198,11 @@ app/
   layout.tsx         the five self-hosted typefaces
   api/generate/      writes and designs the memes
   api/health/        config + reference count, used by the UI
+  api/feedback/      records a like or dislike against a variant's references
 lib/
   claude.ts          the prompt, the layout schema, the Claude call
   reference.ts       draws past memes from Blob (or the local folder)
+  weights.ts         the like/dislike scores and how they bias the draw
   render.ts          canvas renderer, bounds clamping, hit-testing
   image.ts           file → full-res bitmap + downscaled copy for the API
   gate.ts            password check and per-IP rate limit
