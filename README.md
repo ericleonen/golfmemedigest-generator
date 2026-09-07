@@ -129,8 +129,8 @@ The composer offers four:
 | --- | --- |
 | **Auto** | Claude picks, including treatments none of the named formats cover |
 | **Old school** | Impact caps over the photo, no bands, setup top and punchline bottom |
-| **Modern** | A white band above the photo carrying thin black sentence-case text; photo untouched |
-| **Fill in the blank** | A line with a literal `____` the reader completes |
+| **Modern** | A white band above the photo carrying thin black sentence-case text, left-aligned; photo untouched |
+| **Fill in the blank** | Finds the empty space in the photo that wants words — a speech bubble, a blank sign, a template's labels — and writes into it |
 
 Each is a concrete layout brief in `lib/claude.ts` — positions, font, weight and
 size ranges — not just a word in the prompt, so the output looks like the format

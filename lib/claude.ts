@@ -106,28 +106,39 @@ The classic 2010s image macro. Heavy condensed caps straight over the photo, no 
 A white band above the photo with thin black text on it, like a tweet sitting on top of a picture. The photo itself is left completely untouched.
 - padTop between 0.14 and 0.30 — enough room for the line to breathe. padBottom 0. background "#ffffff".
 - Exactly one block, and it goes IN THE BAND. Never place text over the photo in this format.
-- font "sans", weight "light", uppercase false, color "#111111", stroke "none", align "center", width about 0.9, size about 0.035 to 0.05.
+- font "sans", weight "light", uppercase false, color "#111111", stroke "none", width about 0.9, size about 0.035 to 0.05.
+- align "left" and x 0.5. Left-aligned inside the band, vertically centred in it — not centred across the band. That combination puts the text's left edge at a clean margin and lets ragged line ends fall naturally on the right, which is what makes it read like typed text rather than a poster.
 - Sentence case, written the way a person actually types — lowercase beginnings and trailing thoughts are fine. No Impact, no outline, no shouting.
-- Placing the block: y is measured over the WHOLE canvas, which is taller than the photo once a band is added. Centre the text in the band by using half the band's share of the canvas:
+- Placing the block vertically: y is measured over the WHOLE canvas, which is taller than the photo once a band is added. Centre the text in the band by using half the band's share of the canvas:
     padTop 0.16 -> y 0.069
     padTop 0.20 -> y 0.083
     padTop 0.26 -> y 0.103
   If the line needs two rows, use a taller band rather than a smaller font.`,
 
   "fill-in-blanks": `FORMAT: FILL IN THE BLANK
-A line with a literal gap the reader completes in their head or in the comments.
-- Write the blank as a run of underscores, at least four: "____". One blank is usually strongest; two at most.
-- The setup has to constrain the answer hard enough to be funny. "Nobody has ever once said ____ after a shank" works. "Golf is ____" does not.
-- The photo should make the gap obvious — the blank is the punchline the picture is setting up.
-- Layout is yours: Impact caps over the photo, or the white band from the modern format when the line is long enough to need the room. Pick whichever suits the line.
-- Keep the blank on one line with the words around it where you can; a blank that wraps to its own line reads as a mistake.`,
+YOU fill in blanks that are already in the photo. You are not writing a meme that contains blanks for someone else to complete — you are finding the empty spaces in this picture that are asking for words, and putting the words there.
+
+First, look at the photo for a place that is waiting for text:
+- an empty speech bubble or thought bubble
+- a blank sign, board, scoreboard, banner, whiteboard, chalkboard or scorecard
+- a phone or TV screen with nothing on it
+- the empty labelling slots of a recognisable meme template — the two doors, the two buttons, the pointing arrows, the drake panels, the labelled characters
+- a plain wall, a patch of sky, an empty stretch of fairway wide enough to hold a line
+
+Then write into those spaces:
+- padTop 0 and padBottom 0. The photo is not extended. Everything goes inside the frame.
+- One block per space. If there are two bubbles, write two blocks and make them talk to each other. If a template has three labels, fill all three.
+- x and y are the ACTUAL position of that space in the photo. Look at where it really sits — a bubble in the top-left is around x 0.25, y 0.2, not the middle of the frame. Set width and size so the text fits inside the space rather than spilling past its edges.
+- Match the surface. Text inside a white speech bubble is font "sans", color "#111111", stroke "none". Text on a dark screen is "#ffffff" with stroke "none". Text over open grass or sky is "#ffffff" with stroke "black". A handwritten note or scorecard wants font "hand".
+- A label pinned to an object can tilt a few degrees. A bubble's text should not.
+- If the photo genuinely has no space waiting for text, do not invent a bubble. Put one small block on the emptiest part of the frame and let the picture do the rest.`,
 };
 
 const AUTO_BRIEF = `FORMAT: YOUR CHOICE
 Pick whichever fits this photo and this joke, and commit to it fully:
 - Old school: Impact caps over the photo, no bands, setup top and punchline bottom.
 - Modern: a white band above the photo carrying thin black sentence-case text, photo untouched.
-- Fill in the blank: a line with a literal ____ the reader completes.
+- Fill in the blank: find the empty space in the photo that wants words — a speech bubble, a blank sign, a meme template's labels — and write into it.
 - Or something the reference posts show you that none of those names cover — a white caption band, a label pinned to an object in the frame, a handwritten aside.
 Do not default to Impact caps every time.`;
 

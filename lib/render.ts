@@ -178,18 +178,27 @@ function resolve(
     block.stroke === "none" ? 0 : strokeWidth(size, block.weight) / 2;
   const margin = canvasWidth * 0.022 + strokeAllowance;
 
-  const halfWidth = widest / 2;
-  const halfHeight = height / 2;
+  /*
+   * Where the painted text starts, relative to the block's centre.
+   *
+   * Left- and right-aligned text anchors to the edges of the width the block
+   * was given, not to its centre, so its real extent is offset from the centre
+   * by a different amount than centred text. Clamping as if everything were
+   * centred let an off-centre left-aligned block hang over the edge.
+   */
+  const half = (block.width * canvasWidth) / 2;
+  const startOffset =
+    block.align === "left" ? -half : block.align === "right" ? half - widest : -widest / 2;
 
-  // A block wider or taller than the canvas gets centred rather than jammed
-  // against an edge; anything else is pushed just inside the margin.
+  const lowestX = margin - startOffset;
+  const highestX = canvasWidth - margin - widest - startOffset;
   const centreX =
-    widest + margin * 2 >= canvasWidth
-      ? canvasWidth / 2
-      : Math.min(
-          Math.max(block.x * canvasWidth, halfWidth + margin),
-          canvasWidth - halfWidth - margin,
-        );
+    lowestX > highestX
+      ? // Wider than the canvas allows: centre the text itself and accept it.
+        (canvasWidth - widest) / 2 - startOffset
+      : Math.min(Math.max(block.x * canvasWidth, lowestX), highestX);
+
+  const halfHeight = height / 2;
   const centreY =
     height + margin * 2 >= canvasHeight
       ? canvasHeight / 2
@@ -198,7 +207,7 @@ function resolve(
           canvasHeight - halfHeight - margin,
         );
 
-  return { lines, size, widest, height, centreX, centreY };
+  return { lines, size, widest, height, centreX, centreY, startOffset };
 }
 
 /** The box a block occupies, in canvas pixels. Used for drawing and hit-testing. */
@@ -208,9 +217,14 @@ export function blockBounds(
   canvasWidth: number,
   canvasHeight: number,
 ): { x: number; y: number; width: number; height: number } {
-  const { widest, height, centreX, centreY } = resolve(ctx, block, canvasWidth, canvasHeight);
+  const { widest, height, centreX, centreY, startOffset } = resolve(
+    ctx,
+    block,
+    canvasWidth,
+    canvasHeight,
+  );
   return {
-    x: centreX - widest / 2,
+    x: centreX + startOffset,
     y: centreY - height / 2,
     width: widest,
     height,
